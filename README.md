@@ -50,10 +50,12 @@ spending the tokens on it.
   a native IK solve reading the same joint mattered as much as the fix
   itself.
 - [`case-studies/2026-08-06-laser-sight-drift-investigation.md`](case-studies/2026-08-06-laser-sight-drift-investigation.md)
-  — unresolved; documents a full elimination sweep (six theories on
-  where a visual effect's source object lives, all falsified via live
-  reflection) as a template for *how* to search, even without a final
-  answer.
+  — closed as a documented dead end after 17 eliminated mechanisms: a
+  workaround that "worked" but broke gameplay, a config system fully
+  exhausted via developer-labeled data instead of just empty lists, a
+  strong partial hit (right mechanism, wrong specific target), and a
+  whole-type-database name search that ruled out an entire category of
+  theory at once.
 - [`techniques/refframework-reflection-toolkit.md`](techniques/refframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
