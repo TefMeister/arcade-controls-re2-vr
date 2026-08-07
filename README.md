@@ -63,6 +63,13 @@ spending the tokens on it.
   because the codebase had three lookalike position systems (extract /
   insert-detect / visual-landing) for one weapon and each wrong guess
   produced correct-looking math on a code path that just wasn't running.
+- [`case-studies/2026-08-08-smoothing-a-snap-the-lua-never-controlled.md`](case-studies/2026-08-08-smoothing-a-snap-the-lua-never-controlled.md)
+  — abandoned after proving, via logging, that a mod-side trigger condition was
+  working exactly as designed while the visual snap it was meant to gate happened
+  anyway — because the condition only ever controlled whether the mod added
+  smoothing on top of engine behavior, never whether that engine behavior occurred
+  at all. Two real bugs were found and fixed along the way without touching the
+  actual cause, a pattern worth recognizing on its own.
 - [`techniques/refframework-reflection-toolkit.md`](techniques/refframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
