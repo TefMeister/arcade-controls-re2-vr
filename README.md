@@ -70,7 +70,7 @@ spending the tokens on it.
   smoothing on top of engine behavior, never whether that engine behavior occurred
   at all. Two real bugs were found and fixed along the way without touching the
   actual cause, a pattern worth recognizing on its own.
-- [`techniques/refframework-reflection-toolkit.md`](techniques/refframework-reflection-toolkit.md)
+- [`techniques/reframework-reflection-toolkit.md`](techniques/reframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
   different places it can live (skeleton joint, child GameObject,
