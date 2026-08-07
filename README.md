@@ -48,7 +48,9 @@ spending the tokens on it.
   forcing a suspect component to identity) before the fix: overwrite a
   skeleton joint's rotation directly, where hook *ordering* relative to
   a native IK solve reading the same joint mattered as much as the fix
-  itself.
+  itself. Later pulled from the shipping mod anyway — technically correct
+  fixes can still be net-negative once you count what else silently reads
+  the value you're overwriting.
 - [`case-studies/2026-08-06-laser-sight-drift-investigation.md`](case-studies/2026-08-06-laser-sight-drift-investigation.md)
   — closed as a documented dead end after 17 eliminated mechanisms: a
   workaround that "worked" but broke gameplay, a config system fully

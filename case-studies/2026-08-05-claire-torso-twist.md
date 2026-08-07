@@ -1,7 +1,18 @@
 # Claire/Ada's torso visibly twisting ~40° in VR
 
-**Status:** Fixed and shipped (both as part of a larger mod, and as a
-standalone fix for people who don't want the rest of it).
+**Status:** The fix below works correctly at solving the problem it was built
+for — but has since been pulled from the parent mod (2026-08-07), because it
+turned out to cause two unrelated side effects elsewhere: it's the confirmed
+root cause of a separate VR aiming bug on one weapon attachment (see the
+companion laser-sight-drift case study — the fix's own spine correction is
+what displaces the attachment's aim point), and separately it breaks cutscene
+animations. Both were judged not worth the trade-off, so the parent mod ships
+without it again as of that version, back to the original twist behavior. The
+technique itself is left intact in a standalone package for anyone who wants
+it and can live with the side effects. Kept here specifically because the
+*technique* is still a correct, reusable answer to the original problem — the
+removal was about the wider consequences of using it in this specific mod,
+not the approach being wrong.
 
 ## The symptom
 
@@ -132,3 +143,11 @@ assuming a flat-screen pass was sufficient.
   testing across the states that actually occur in play (walking,
   running) before calling it done — animation-driven values rarely sit
   still.
+- **A fix can be completely correct at its own goal and still be net-negative
+  once its side effects elsewhere are added up.** This one does exactly what
+  it was designed to do, with no bug in the implementation — it was removed
+  anyway, because overwriting a bone that other systems (a weapon
+  attachment's aim calculation, cutscene animation playback) also silently
+  depend on doesn't stay contained to the visual problem it was aimed at.
+  Worth explicitly checking what *else* reads a value before permanently
+  overwriting it, not just confirming the overwrite achieves its own target.
