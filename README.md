@@ -56,6 +56,11 @@ spending the tokens on it.
   strong partial hit (right mechanism, wrong specific target), and a
   whole-type-database name search that ruled out an entire category of
   theory at once.
+- [`case-studies/2026-08-07-three-position-systems-one-weapon.md`](case-studies/2026-08-07-three-position-systems-one-weapon.md)
+  — tuning a VR grab point that silently did nothing, three times in a row,
+  because the codebase had three lookalike position systems (extract /
+  insert-detect / visual-landing) for one weapon and each wrong guess
+  produced correct-looking math on a code path that just wasn't running.
 - [`techniques/refframework-reflection-toolkit.md`](techniques/refframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
