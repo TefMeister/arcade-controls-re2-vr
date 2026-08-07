@@ -1,11 +1,10 @@
 # Laser/red-dot sight beam drifting off aim, in VR only
 
-**Status:** Unresolved as a direct fix. Found the specific field that
-drives the bug, confirmed it can't be influenced by writing to it
-directly, and pivoted to a suppress-and-substitute strategy instead of
-continuing to chase the native calculation. Documented in full because
-the elimination process — including the parts that led nowhere — is the
-actual value here, not just the eventual answer.
+**Status:** Closed as a dead end after 17 separate mechanisms were
+eliminated across three sessions — a deliberate stopping point, not an
+abandoned thread. Documented in full because the elimination process —
+including the parts that led nowhere, and the reasoning for stopping —
+is the actual value here, not just the eventual (non-)answer.
 
 ## The symptom
 
@@ -151,14 +150,159 @@ same field dump — worth reading names in the dump for exactly this
 signal before wiring up a per-frame override, not just for what to
 target).
 
-## Where it stands / the pivot
+## Round four: the "suppress it instead" plan, and why it didn't ship
 
-Rather than continuing to chase the native formula, the practical plan
-going forward: suppress the native dot (once a safe way to do that is
-found — force-zeroing the equip-parts flag is not it) and substitute the
-mod's own already-correct aim-reticle system in its place specifically
-when this attachment is equipped, instead of fixing the broken
-calculation directly. Not yet implemented as of this writing.
+With the direct calculation unreachable, the next plan was pragmatic:
+stop trying to fix the broken beam and instead hide it, substituting a
+different system in the same codebase that already computes a correct VR
+aim reference for an unrelated reason (a raycast-based reticle, built for
+general aiming feedback, always active and already proven correct).
+
+The obvious lever — the same "which parts are equipped" flag that had
+already caused a live disruption once (see the costly aside above) — has
+a *safer* sibling: a dedicated override channel elsewhere in this same
+codebase, already proven safe under continuous per-frame forcing for an
+unrelated feature (suppressing a different in-hand item under a specific
+grip combination). Using that channel instead of the raw live-state
+field, masking out just the sight's bit: **it worked.** Both the beam and
+the attachment's visible housing model disappeared.
+
+It also broke something else. The weapon's aiming quietly lost a real
+gameplay behavior the sight is supposed to grant — a faster reticle
+lock-on — not just its visuals. The override flag doesn't gate "is the
+dot rendered," it gates "is this attachment considered equipped at all,"
+and multiple systems read that same signal for multiple different
+purposes. Hiding a visual bug by making the game briefly forget you have
+the attachment on is not a fix; it's swapping a cosmetic bug for a
+mechanical one, and the mechanical one is worse.
+
+**Lesson:** a flag that controls visibility often isn't visibility-only.
+Before shipping a suppression workaround built on an equip/attachment
+flag, explicitly go looking for anything *else* that flag might gate —
+don't assume "the model disappeared" means "nothing else changed."
+
+## Round five: exhausting the VFX system properly, not just poking at it
+
+The native effects-manager component had already had two of its fields
+checked and come back empty (see round two). This round went back and
+checked *everything else on it*, methodically, one field at a time:
+
+- A list of "expert" per-attachment effect providers — actually
+  enumerated by runtime type this time, not just checked for a plausible
+  name. Every single entry, on both the weapon and the player, matched
+  an already-known, already-identified non-laser effect (muzzle flash,
+  impact effects, damage/blood effects, water splashes, footstep dust).
+  No hidden entry.
+- Several object-reference fields meant to point at whatever a visual
+  effect is currently "following" — all either empty, or resolving right
+  back to the weapon or player object itself, never to some separate prop
+  nobody had found yet.
+- The actual data-driven configuration behind the whole effect system —
+  and this one had something the others didn't: the original developers
+  had labeled every single entry with a plain-language comment. A
+  complete, human-labeled inventory of every visual effect this weapon
+  and this character are configured to produce. None of them were the
+  sight.
+
+That last one is worth dwelling on, because it's a different *kind* of
+negative result than most of the ones before it. "The list was empty"
+always leaves a sliver of doubt — maybe it's just not active right now.
+"Here is the complete, developer-labeled list of everything that *can*
+happen, and the thing you're looking for isn't on it" doesn't have that
+gap. This is as close to a definitive negative as reflection against a
+compiled binary gets.
+
+**Lesson:** when a system has multiple related fields and only a couple
+have ever been checked, go back and check the rest before moving to a
+different theory entirely — a system can be 90% eliminated and still
+be hiding the answer in the one untouched field. And a config-driven
+system's *data*, once found, is often more conclusive than the *code*
+around it, especially if someone left the data labeled.
+
+## Round six: it's on the mesh — just not the part you'd think
+
+With the whole effects system exhausted, the next theory came from a
+fact established all the way back in round one: this attachment has no
+separate object of its own at all — zero children, on either the weapon
+or the player. If it's not a spawned effect and it's not a separate
+object, the remaining possibility is that it's baked directly into the
+weapon's own 3D model.
+
+The weapon's mesh component turned out to expose a real, working API for
+enabling and disabling individual materials by index — confirmed via
+reflection on the actual method signature rather than guessed. Listing
+the material names directly hit paydirt: three of the weapon's six
+materials were explicitly, unambiguously named for the sight attachment.
+
+Toggling each one individually, live, produced a clean and complete
+picture — but not the one hoped for. One material was the sight's solid
+housing body. Another was its lens glass. A third was a tinted material
+only visible from inside the housing looking out. All three, individually
+confirmed, controlled real and distinct parts of the attachment's
+appearance. **None of them were the dot.** It stayed lit, stayed
+misaimed, through every combination.
+
+**Lesson:** a hypothesis can be *right about the mechanism* (this really
+is baked into the mesh, not spawned) while being *wrong about the
+specific target* (the housing and glass are mesh materials; the glowing
+dot itself apparently is not, or isn't only that). Getting a strong hit
+on part of a theory is not the same as confirming the whole theory —
+worth being precise about exactly what got confirmed versus what's still
+assumed.
+
+## Round seven: asking the whole game, not just the one object
+
+Every theory up to this point shared a structural assumption: search
+*outward* from a known object (the weapon, the player) through whatever
+is attached to or reachable from it. That approach cannot find something
+that was never attached to either of those two objects in the first
+place — a separate, independent system that happens to read the weapon's
+data without being part of its object graph.
+
+The tool used for every previous check doesn't only support "show me
+what's on this object" — it also supports a plain name search across the
+game's entire loaded type database, independent of any object instance.
+Searching directly for the obvious candidate words came back empty
+across the board, with one accidental, unrelated hit and a couple of
+generic engine types nothing to do with weapons.
+
+This is a different, and in some ways more final, kind of negative
+result than any of the object-graph searches before it: it doesn't just
+rule out one theory, it rules out an entire *category* of theory — "a
+dedicated class for this exists somewhere and we just haven't found the
+right object to look on." No such class exists under any name a
+developer would plausibly have given it.
+
+**Lesson:** when every negative result has come from the same *kind* of
+search (here: walking outward from a known object), it's worth explicitly
+trying a structurally different search axis — a name-based, object-
+independent search, if the tooling supports one — before concluding a
+whole category of explanation is exhausted. A dozen failed object-graph
+searches don't rule out something that was never reachable from an
+object graph to begin with; only a genuinely different search method
+does that.
+
+## Where it actually landed
+
+Seventeen mechanisms in, every static/passive angle this tooling
+supports — reading fields, enumerating lists, resolving references,
+searching type names — has been tried and has come back negative, several
+of them conclusively rather than ambiguously. What's left isn't another
+field to check; it's a different *technique* entirely: hooking the
+native code live and watching what it actually does at the exact moment
+the effect appears, rather than inspecting whatever state is sitting
+there afterward. That technique has precedent for working on a
+differently-shaped problem in this same project (see the companion case
+study on shell-ejection timing), but it's a materially bigger investment
+than anything here — hooking before knowing what to hook, and tracing
+live rather than reading a single snapshot.
+
+Given how much ground was already covered with solid, verifiable
+evidence at every step, the call was made to stop here rather than open
+that much larger investment unprompted. This is written up as a closed
+dead end, not a paused one — but a well-documented dead end is exactly
+the kind of thing that should save the next person (or the next AI) from
+re-walking the same seventeen steps if they ever pick this back up.
 
 ## Process lessons, independent of the eventual answer
 
@@ -188,7 +332,28 @@ calculation directly. Not yet implemented as of this writing.
   rather than a transcription.** A status panel with several similarly-
   worded lines is easy to misdescribe; a screenshot removes an entire
   class of back-and-forth.
-- **When direct fix attempts are exhausted, "suppress and substitute" is
-  a legitimate strategy**, not a consolation prize — especially when a
-  known-correct alternative system already exists in the codebase for a
-  closely related purpose (here: the VR aim-reticle fix).
+- **A workaround that "works" by hiding something can still be the wrong
+  answer.** If the lever you found gates more than the one symptom you're
+  chasing, confirm nothing else depends on it before calling it a fix —
+  a visual bug traded for a gameplay regression is not progress.
+- **A system being 90% checked is not the same as 100% checked.** Go
+  back and finish checking every field on a component you've already
+  partially explored before moving to an unrelated theory — the answer
+  can be sitting in the one field nobody got around to.
+- **Data left labeled by the original developers, once you find it, can
+  be more conclusive than any amount of code-reading.** A complete,
+  human-labeled inventory closes a question a merely-empty list can't.
+- **A confirmed mechanism can still target the wrong specific thing.**
+  Getting a strong, real hit on part of a hypothesis (materials that
+  really were sight-related) doesn't confirm the whole hypothesis (that
+  those materials control the dot specifically) — check the actual
+  target, not just the category.
+- **When every failed search shares the same structural assumption**
+  (here: walking outward from a known object), try a genuinely different
+  search axis — like a name search across the whole type database —
+  before concluding a category of explanation is exhausted, not just one
+  member of it.
+- **A well-documented dead end is a legitimate deliverable**, not a
+  failure to write up. Seventeen eliminated mechanisms with real evidence
+  is worth more to the next investigator than a vague "we tried some
+  stuff and gave up."
