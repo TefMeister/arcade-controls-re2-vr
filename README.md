@@ -70,6 +70,14 @@ spending the tokens on it.
   smoothing on top of engine behavior, never whether that engine behavior occurred
   at all. Two real bugs were found and fixed along the way without touching the
   actual cause, a pattern worth recognizing on its own.
+- [`case-studies/2026-08-08-edge-trigger-no-retry-and-a-controller-blip.md`](case-studies/2026-08-08-edge-trigger-no-retry-and-a-controller-blip.md)
+  — a grab gesture checked "just pressed" and "in range" in the same frame with
+  no retry, found dead via a state flag that was written in ten places and read
+  in zero; fixed, then two more plausible hypotheses for a milder residual case
+  (distance-threshold flicker, grip loosening at full reach) were each killed
+  by live log data before tracing the input down to a pre-digitized boolean the
+  mod has no hysteresis access to — and stopping there once the player called
+  the remainder acceptable jank.
 - [`techniques/reframework-reflection-toolkit.md`](techniques/reframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
