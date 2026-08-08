@@ -78,6 +78,15 @@ spending the tokens on it.
   by live log data before tracing the input down to a pre-digitized boolean the
   mod has no hysteresis access to — and stopping there once the player called
   the remainder acceptable jank.
+- [`case-studies/2026-08-08-the-hardware-quirk-that-wasnt.md`](case-studies/2026-08-08-the-hardware-quirk-that-wasnt.md)
+  — revisits the entry above: the "acceptable jank, no raw analog access" residual
+  case came back worse, and turned out to be two more ordinary software bugs, not
+  hardware — a position global that was never cleared after use and went stale for
+  seconds at a time, then an animated-skeleton position that spiked on individual
+  frames, then a *separate* visual system reading the same noisy range check with
+  no debounce of its own even after the state machine driving the actual grab was
+  provably fixed. A case for reopening an "unfixable hardware" conclusion when the
+  symptom changes shape instead of re-applying the old workaround harder.
 - [`techniques/reframework-reflection-toolkit.md`](techniques/reframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
