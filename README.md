@@ -87,6 +87,19 @@ spending the tokens on it.
   no debounce of its own even after the state machine driving the actual grab was
   provably fixed. A case for reopening an "unfixable hardware" conclusion when the
   symptom changes shape instead of re-applying the old workaround harder.
+- [`case-studies/2026-08-09-inhibit-is-not-request.md`](case-studies/2026-08-09-inhibit-is-not-request.md)
+  — a "block this from happening" API looked like the right lever for "make this
+  happen" and did nothing; the real fix needed a genuine per-frame request flag found
+  via observation first, then survived one more wrong turn (writing after one specific
+  update method, which wasn't reliably the last writer) before landing on intercepting
+  the setter itself — the argument-side twin of overriding a return value in a
+  post-hook.
+- [`case-studies/2026-08-09-a-fix-that-kept-reverting-itself.md`](case-studies/2026-08-09-a-fix-that-kept-reverting-itself.md)
+  — a config fix that reverted to the *exact same* bit-for-bit value twice, which
+  ruled out "recorrupted by a new event" and pointed at a stale in-memory copy being
+  re-saved instead — traced to an unrelated, previously-diagnosed-but-never-deployed
+  profile-lookup bug silently routing one character's reads/writes into another
+  character's data the whole time.
 - [`techniques/reframework-reflection-toolkit.md`](techniques/reframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
