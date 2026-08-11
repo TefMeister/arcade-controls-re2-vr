@@ -100,6 +100,25 @@ spending the tokens on it.
   re-saved instead — traced to an unrelated, previously-diagnosed-but-never-deployed
   profile-lookup bug silently routing one character's reads/writes into another
   character's data the whole time.
+- [`case-studies/2026-08-12-the-camera-knows-where-it-looks-not-where-you-are.md`](case-studies/2026-08-12-the-camera-knows-where-it-looks-not-where-you-are.md)
+  — two unrelated-looking proximity bugs, same root cause: deriving a "where is the
+  player really" answer from the render camera's world matrix instead of raw tracked
+  position, which lines up fine facing one direction and silently drifts the moment
+  the player physically turns in their room. Fixed in both places once the pattern
+  was recognized the second time; a doc comment that had already named the exact
+  problem ("includes artificial locomotion; not raw play-space tracking") just hadn't
+  been connected to the first bug yet.
+- [`case-studies/2026-08-12-from-proximity-to-a-real-two-handed-grip.md`](case-studies/2026-08-12-from-proximity-to-a-real-two-handed-grip.md)
+  — IN PROGRESS. A cosmetic hand-placement feature escalates through three designs
+  (proximity trigger → button gate → an attempt at a real physical two-handed grip
+  that actually moves the weapon), discovering along the way that "this value gets
+  overwritten every frame" from an earlier wall meant "wrong hook point," not
+  "unwritable" — a pre-hook on the native solver's input succeeded where a post-write
+  had failed before. Two real bugs found and fixed from live log data (a threshold
+  stuck at its own UI slider's max; a hook wired to the wrong lifetime, only running
+  for a few frames after firing instead of continuously). A third — an intermittent
+  wild rotation, suspected numerical instability in a near-parallel cross product —
+  is open at time of writing.
 - [`techniques/reframework-reflection-toolkit.md`](techniques/reframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
