@@ -109,16 +109,23 @@ spending the tokens on it.
   problem ("includes artificial locomotion; not raw play-space tracking") just hadn't
   been connected to the first bug yet.
 - [`case-studies/2026-08-12-from-proximity-to-a-real-two-handed-grip.md`](case-studies/2026-08-12-from-proximity-to-a-real-two-handed-grip.md)
-  — IN PROGRESS. A cosmetic hand-placement feature escalates through three designs
-  (proximity trigger → button gate → an attempt at a real physical two-handed grip
-  that actually moves the weapon), discovering along the way that "this value gets
-  overwritten every frame" from an earlier wall meant "wrong hook point," not
-  "unwritable" — a pre-hook on the native solver's input succeeded where a post-write
-  had failed before. Two real bugs found and fixed from live log data (a threshold
-  stuck at its own UI slider's max; a hook wired to the wrong lifetime, only running
-  for a few frames after firing instead of continuously). A third — an intermittent
-  wild rotation, suspected numerical instability in a near-parallel cross product —
-  is open at time of writing.
+  — CONCLUDED, but not the way it started. A cosmetic hand-placement feature escalates
+  through three designs into a real physical two-handed grip that moves the weapon,
+  fixes a genuinely unstable rotation (wrong reference point, not a bad formula), then
+  keeps generating new plausible bugs from real-world hand-position tracking until the
+  developer concludes the platform itself will never make tracked positions feel solid
+  — and rebuilds the whole feature on a button-state latch with zero position tracking
+  at all, reusing an existing proven animation system by extending *when* it applies
+  instead of reconstructing it from primitives. One bug (a decision that quietly
+  depends on where the player is looking) survives the rebuild, still open.
+- [`case-studies/2026-08-14-a-fix-that-existed-somewhere-else.md`](case-studies/2026-08-14-a-fix-that-existed-somewhere-else.md)
+  — a real, working fix goes missing between two machines not because it was deleted,
+  but because it existed in a handoff location one directory level above the specific
+  folder a much earlier instruction had named — a reminder that guidance about *where
+  to look* goes stale exactly like guidance about *what's there*. Includes a second,
+  independently found bug (a silent full-inventory data-eviction case) and a language
+  footgun (`cond and a or b` silently breaking when the value can legitimately be
+  `false`) that had already bitten the same project once before.
 - [`techniques/reframework-reflection-toolkit.md`](techniques/reframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally

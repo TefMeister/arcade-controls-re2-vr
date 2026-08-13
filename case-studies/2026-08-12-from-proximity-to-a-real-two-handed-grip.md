@@ -1,10 +1,14 @@
-# From a proximity dock to a real two-handed grip — three bugs in, still going
+# From a proximity dock to a real two-handed grip — and back to something simpler
 
-**Status:** IN PROGRESS, paused mid-investigation by the developer's own choice
-("rule out everything before giving up," not a dead end). Two real bugs found and
-fixed from live log data during this session; a third, more serious one is open.
-Written up now rather than waiting for a conclusion, because the debugging process
-itself — real data over speculation, twice — is the reusable part.
+**Status:** CONCLUDED, but not with the fix this write-up originally expected. After
+several more sessions chasing real-hand-position tracking (summarized in the new final
+section below), the developer made the call that hand-tracking was never going to feel
+solid in this particular game engine, and the feature was rebuilt on a completely
+different mechanism — a button-state latch with zero position tracking at all. That
+version mostly works; one bug (aim briefly pointing the wrong way under a specific
+condition) is still open. Kept as one continuous write-up rather than a new file,
+because the reasoning that led to abandoning the tracked-position approach is the real
+payoff here, not just the bugs found along the way.
 
 ## Escalation, not a single ask
 
@@ -150,3 +154,111 @@ patching blind.
   and it's worth reasoning about *when* the bad case would occur before writing a
   fix, the same way the first two bugs here were resolved from real logged numbers
   rather than guesses.
+
+## Bug #3, resolved: the rotation between the wrong two numbers
+
+The cross-product-instability theory above turned out to be wrong. Targeted logging
+(comparing the raw pre-processed rotation input against the same value after the
+mod's own recoil-offset math) proved the numbers were identical the whole time — the
+math wasn't unstable, it was correctly computing a rotation toward the *wrong target
+direction entirely*. The support hand sits just behind the muzzle by design (a few
+centimeters, for a realistic foregrip), and the code was computing "which way should
+the weapon point" as the vector from the muzzle to that support hand — a vector that's
+almost always nearly antiparallel to the barrel's real forward direction, which is
+exactly the geometry that makes a rotation axis numerically unstable. Fixing the sign
+didn't fix it either — the real bug was normalizing a vector that short at all: at
+that distance, ordinary hand-tracking jitter (sub-centimeter) dominates the resulting
+direction once normalized. The actual fix was changing which two points defined the
+direction — measuring from the *trigger hand's own grip point* through the support
+hand, not from the muzzle tip, since that vector is always tens of centimeters long
+regardless of weapon or grip tightness and stays stable under the same jitter that
+broke the muzzle-relative version.
+
+**Lesson:** "numerically unstable" is a real, correct diagnosis of *how* something goes
+wrong, but it doesn't by itself tell you *why* the inputs end up in the unstable
+region in the first place. Here, the instability was a symptom of a badly chosen
+reference point, not a badly chosen formula — the formula was fine once fed a vector
+that was never going to be short or near-parallel to begin with. When a numerically
+unstable computation misbehaves, check whether its inputs are structurally close to
+the instability region *by construction*, not just occasionally by bad luck.
+
+## The pivot: giving up on real hand-position tracking entirely
+
+Getting the rotation direction right didn't end the debugging — it started a longer
+run of it. Once the aim genuinely followed the tracked hand, a new problem appeared:
+the gun's position (not rotation) jittered wildly, several tens of centimeters per
+frame, even though the real hand tracking data feeding it was rock steady. Isolating
+this took several more rounds: ruling out the render-frame vs. logic-tick mismatch,
+ruling out wrist-side identity swapping between frames (confirmed stable via direct
+logging), and eventually finding the real cause — the *native engine's own* solver
+target was moving that much, before the mod's code ever touched it. The mod was
+forcing a large rotation correction onto the arm-IK solver every single frame at full
+strength, and the solver's own position solve turned out to be entangled with that
+forced rotation in a way that produced a runaway feedback loop. Lowering the
+correction strength (accepting a small responsiveness cost) made the position
+instability disappear completely — a clean, confirmed root cause.
+
+That should have been the finish line. Instead, live testing kept surfacing the same
+underlying complaint in different forms: the grip zone effectively tracked where the
+player's head was pointed rather than where their hand actually was (the camera-
+relative hand-position reconstruction described in the companion write-up, "The
+camera knows where it looks, not where you are," bleeding into yet another consumer
+of that same shared value); the hand never felt "really" attached to the gun the way
+the game's own existing two-handed-aim animation already does; and the whole thing
+still felt subtly wrong while moving, no matter how many individual bugs got fixed.
+
+At that point the developer made a call that mattered more than any single bug fix:
+**real-world hand-position tracking was never going to feel solid in this particular
+game, because the game wasn't built for it — chasing it further was polishing a
+fundamentally shaky foundation.** Rather than keep refining position-tracked math,
+the feature was rebuilt from scratch on a completely different mechanism with **zero
+position tracking of any kind**:
+
+- The game already has a proven, existing "support hand follows the two-handed
+  weapon" animation system, active whenever the normal two-handed-aim button is held.
+  It's cosmetic-only (doesn't drive aim) and has never had any of the above problems,
+  because it's driven by the game's own animation, not reconstructed hand tracking.
+- Instead of trying to reproduce or improve on that system, the new design just
+  **extends its *lifetime***: holding both the normal two-handed button and a second
+  grip button together "catches" that already-correct pose in a latch. Releasing the
+  first button no longer drops the hand — the latch keeps the existing system engaged
+  until the second button is released too.
+- No proximity checks, no frozen offsets, no reconstructed positions anywhere in the
+  new mechanism — just two button states and one latch flag.
+
+This fixed the "doesn't feel real" and "janky while moving" complaints outright,
+confirmed by the same developer who'd been unable to get either right across every
+tracked-position attempt. One bug from the transition period remains open (see below).
+
+**Lesson, the real payoff of this whole investigation:** when a feature keeps
+generating a *new* plausible-sounding bug every time the last one gets fixed, and each
+individual fix is clean and well-reasoned, that pattern is itself a signal — not proof
+of an unfixable feature, but a reason to step back and ask whether the *entire
+approach* is fighting the platform rather than working with it, before sinking more
+effort into the fifth root-cause investigation of the same symptom in different
+clothes. Reusing an existing, already-correct system by extending *when* it applies
+can beat rebuilding an equivalent system from lower-level primitives, especially when
+the lower-level primitives (real-world tracked positions, here) are exactly the part
+that's been unreliable throughout.
+
+## One bug still open: a decision that quietly depends on where you're looking
+
+The one surviving issue from the tracked-position era followed the new mechanism into
+its rebuild, because it lives one layer deeper than either implementation: deciding
+*which* of two symmetric data structures corresponds to the left vs. right hand, when
+the game's own "which hand is this" flag is ambiguous, falls back to comparing
+distances against the same camera-relative reconstructed hand positions described in
+the companion camera write-up. Under the old tracked-position system this
+disambiguation rarely mattered enough to notice. Under the new latch — which, for the
+first time, can hold a hand in a genuinely fixed pose for many seconds while the
+player looks around freely — looking far enough off to one side shifts the
+reconstruction enough to flip which structure gets called "the right hand," briefly
+handing the aim-driving code the support hand's own pose instead. Two targeted fixes
+(preferring a cached, non-reconstructed reference position for one side of the
+comparison; separately, replacing a different piece of hand-relative math with a
+value derived straight from the weapon's own geometry) each addressed a real,
+independently-reasoned problem, and neither fixed this particular symptom — a reminder
+that a system built from several years' worth of small historical patches, each
+individually justified, can still have an unresolved case none of them cover, and
+that finding it may take instrumenting the disambiguation decision directly rather
+than fixing what looks adjacent to it.
