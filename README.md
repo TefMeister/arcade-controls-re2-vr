@@ -145,6 +145,14 @@ spending the tokens on it.
   rendering, below what managed-object reflection can reach — written up
   mid-investigation because a negative result that narrows the search is still
   real progress.
+- [`case-studies/2026-08-15-deleting-a-feature-without-breaking-its-neighbor.md`](case-studies/2026-08-15-deleting-a-feature-without-breaking-its-neighbor.md)
+  — removing a retired, confirmed-game-breaking toggle looked like it meant
+  deleting the native-method hook it lived in, until a full read of that hook's
+  body turned up a second, unrelated feature that had later started piggybacking
+  on the same hook purely because it already fired at the right moment for free.
+  Deleting the whole hook would have silently broken that second feature with no
+  error at all — caught by reading the hook fully before cutting anything, not by
+  assuming "this hook = this one feature."
 - [`techniques/reframework-reflection-toolkit.md`](techniques/reframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
