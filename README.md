@@ -136,16 +136,15 @@ spending the tokens on it.
   real native calls as pure observers during a known-good manual merge, rather
   than continuing to guess at which field might carry the signal.
 - [`case-studies/2026-08-15-two-clean-eliminations-one-still-open-mystery.md`](case-studies/2026-08-15-two-clean-eliminations-one-still-open-mystery.md)
-  — RE-PARKED. A VR-only black background on one specific screen survives three
-  independently-tested fix attempts: forcing the screen's own blur/FOV fields to
-  neutral (zero effect), skipping the one render-setup trigger method involved
-  (also zero effect), then skipping the screen-open call entirely to fall back on
-  a different, working interaction's clean display path — which instead made it
-  *worse* (blacked out the whole screen, not just the background), showing the
-  working case's cleanliness comes from a structurally separate code path, not
-  from the mere absence of that one call. Nine total eliminations across two
-  sessions now point at shader/native-rendering level, past what reflection or
-  method-hooking can reach.
+  — CLOSED, root cause found but not fixable. Three code-based fix attempts for a
+  VR-only black background all failed (two with zero effect, one that made it
+  worse), then a fourth "attempt" that wasn't code at all settled it for free:
+  manually triggering the exact same native screen a completely different,
+  never-modded way (an existing button that examines an owned item) produces the
+  identical black background. The bug was never pickup-specific or even
+  mod-specific — it's this native UI screen failing to render correctly in VR at
+  all, confirmed by testing whether the unmodified game already has the symptom
+  before writing any more code to chase it.
 - [`case-studies/2026-08-15-deleting-a-feature-without-breaking-its-neighbor.md`](case-studies/2026-08-15-deleting-a-feature-without-breaking-its-neighbor.md)
   — removing a retired, confirmed-game-breaking toggle looked like it meant
   deleting the native-method hook it lived in, until a full read of that hook's

@@ -1,12 +1,12 @@
-# Three clean eliminations and one that made it worse — closing out a background that won't stop going black
+# It was never the mod's bug — closing out a background that won't stop going black
 
-**Status:** RE-PARKED. Three independent, plausible-looking fixes for a
-background-rendering bug have now all been tested to completion — two cleanly ruled
-out with zero effect, one that actually made the symptom worse. Combined with six
-earlier rounds against a different set of properties in an earlier session, every
-angle reachable through reflection and native-method hooking is now exhausted. Not
-a failure of the investigation — a complete, confident answer about where the fix
-does *not* live, which is exactly the kind of result this repo exists to record.
+**Status:** CLOSED, with an actual root-cause answer, just not a fixable one. Four
+fix attempts across two sessions all failed, but the last one failed in the single
+most informative way possible — it wasn't even a fix attempt, it was a free test of
+whether the symptom exists in the *unmodified* game at all. It does. This flips the
+whole investigation from "this mod broke something" to "this specific native UI
+screen doesn't render correctly in VR at all," which is a real, complete answer,
+just not one any amount of further modding effort can act on.
 
 ## The symptom
 
@@ -89,33 +89,62 @@ that the broken path's own downstream logic silently depends on to reach a
 half-working state can produce a *more* broken state than leaving it in — skipping
 is not neutral just because it avoids calling something suspect.
 
+## Attempt four: not a fix, a free test — does the unmodified game have this bug too?
+
+One question was still open after attempt three: the screen that opens for a pickup
+takes an internal mode value that changes its exact behavior (a "brand new item"
+presentation versus a "you already have this" one), and a *different*, completely
+native, never-modded interaction — manually selecting an item you already own from
+your inventory to view its description — uses that same underlying method with the
+other mode value. Nothing in this mod has ever touched that specific interaction.
+
+Rather than write code to force pickups into that other mode — which carried a real,
+specific risk given a past feature in this same codebase had already caused a hard
+freeze by forcing this exact argument into a state that didn't match what the
+engine internally expected — the actual question got tested directly, for free: go
+into the inventory manually, look at an owned item's description, see what happens.
+
+**Also black.** Immediately conclusive, and far more informative than another
+elimination would have been: the value of that mode argument doesn't matter,
+because the symptom isn't tied to pickups, to any mode, or to anything this mod's
+code has ever touched. A totally unmodified, native interaction has the identical
+bug.
+
+**Lesson:** when a hypothesis is really "does behavior A differ from behavior B,"
+check whether B already exists somewhere in the unmodified program before writing
+code to manufacture it artificially. Here, B (mode=2's rendering) was one manual
+button press away in the existing game, fully untouched by any mod code — testing
+it directly cost nothing and carried zero risk, versus writing new code with a
+known, structurally-similar precedent for causing a hard freeze, to answer a
+question the game itself could already answer for free.
+
 ## Where this leaves the investigation
 
-All three toggles were left in the shipped mod as inert, harmless switches — off by
-default, clearly labeled as confirmed dead ends (or worse) rather than deleted, on
-the theory that a documented negative result is worth more sitting next to the code
-than erased from it. None should be re-tested blind; all three are now conclusively
-resolved, not merely untried.
+All three code-based toggles were left in the shipped mod as inert, harmless
+switches — off by default, clearly labeled as confirmed dead ends (or worse) rather
+than deleted, on the theory that a documented negative result is worth more sitting
+next to the code than erased from it. None should be re-tested blind; all are now
+conclusively resolved, not merely untried.
 
-The real cause is still unknown, and this specific investigation is now closed
-without a fix. Nine total eliminations across two sessions — six against one set of
-properties, three against another, plus the render trigger call and the screen-open
-call itself — point at the same conclusion from every angle tried: whatever actually
-produces the black background sits at the shader or native rendering level, below
-what reflection into managed objects, or hooking their methods, can reach or safely
-influence. Progress from here needs a fundamentally different kind of tool — frame
-capture/shader debugging, or native plugin work — not another reflection-based
-guess.
+But the real finding is the fourth attempt: this was never this mod's bug to begin
+with. The native detail/examine screen doesn't render correctly in VR through this
+VR injection layer, full stop, independent of pickups, independent of which mode
+it's opened with, independent of anything reachable through Lua reflection or
+method hooking. Ten total eliminations across two sessions all pointed the same
+direction — shader/native-rendering level, below what this mod's tooling can reach
+— but it was the one test that touched zero mod code at all that turned "probably
+unreachable" into "confirmed to already exist in the unmodified game." **Closed by
+the player's own call, and the correct one:** accept this as a genuine engine/VR
+limitation, not something to keep chasing.
 
 ## General lesson
 
-A confirmed-successful write (or a confirmed-successful skip) with zero — or
-negative — observed effect, repeated across multiple independently-plausible
-targets, is real signal, not a string of unlucky guesses. Two clean zero-effect
-results said "stop adjusting parameters on this object." A third result that made
-things actively worse said something sharper: the difference between the working
-and broken cases isn't a missing or extra call at all, it's two genuinely different
-systems, and no amount of nudging calls in the broken one will produce the working
-one's behavior. Recognizing when a whole *category* of intervention is exhausted —
-not just one specific attempt within it — is what let this close cleanly instead of
-generating a tenth variation on the same idea.
+A confirmed-successful write (or skip) with zero — or negative — observed effect,
+repeated across multiple independently-plausible targets, is real signal: each one
+narrows what *isn't* the cause. But the single most decisive piece of evidence in
+this whole investigation wasn't a fix attempt at all — it was checking whether the
+unmodified game already exhibits the same symptom somewhere untouched by any of
+this code. That question is worth asking *before* committing to a risky code-based
+test, not just after several code-based tests fail: if the "healthy" comparison
+point turns out to have the same bug, no amount of code will ever close the gap,
+because there isn't one to close.
