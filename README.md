@@ -135,6 +135,16 @@ spending the tokens on it.
   path reads is simply never populated for this category — found by hooking the
   real native calls as pure observers during a known-good manual merge, rather
   than continuing to guess at which field might carry the signal.
+- [`case-studies/2026-08-15-two-clean-eliminations-one-still-open-mystery.md`](case-studies/2026-08-15-two-clean-eliminations-one-still-open-mystery.md)
+  — OPEN. A VR-only black background on one specific screen survives two
+  independently-confirmed-successful fix attempts: forcing the screen's own
+  blur/FOV fields to neutral (write verified via readback, zero visual change),
+  then skipping the one render-setup trigger method involved instead of a numeric
+  parameter (also verified live, also zero effect, and confirmed no other side
+  effect either). Both eliminations narrow the real cause toward shader/native
+  rendering, below what managed-object reflection can reach — written up
+  mid-investigation because a negative result that narrows the search is still
+  real progress.
 - [`techniques/reframework-reflection-toolkit.md`](techniques/reframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
