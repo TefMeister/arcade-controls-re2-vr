@@ -126,6 +126,15 @@ spending the tokens on it.
   independently found bug (a silent full-inventory data-eviction case) and a language
   footgun (`cond and a or b` silently breaking when the value can legitimately be
   `false`) that had already bitten the same project once before.
+- [`case-studies/2026-08-15-the-items-with-no-itemid.md`](case-studies/2026-08-15-the-items-with-no-itemid.md)
+  — three items that never matched an allow-list check because they don't carry
+  their identity in the field every other item type uses at all, but a second,
+  parallel ID field meant for a different object category entirely. Fixing
+  identification surfaced a second bug one layer in: merging a new one into an
+  existing stack silently failed too, because the field every other item's merge
+  path reads is simply never populated for this category — found by hooking the
+  real native calls as pure observers during a known-good manual merge, rather
+  than continuing to guess at which field might carry the signal.
 - [`techniques/reframework-reflection-toolkit.md`](techniques/reframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
