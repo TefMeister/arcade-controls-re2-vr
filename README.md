@@ -136,15 +136,16 @@ spending the tokens on it.
   real native calls as pure observers during a known-good manual merge, rather
   than continuing to guess at which field might carry the signal.
 - [`case-studies/2026-08-15-two-clean-eliminations-one-still-open-mystery.md`](case-studies/2026-08-15-two-clean-eliminations-one-still-open-mystery.md)
-  — OPEN. A VR-only black background on one specific screen survives two
-  independently-confirmed-successful fix attempts: forcing the screen's own
-  blur/FOV fields to neutral (write verified via readback, zero visual change),
-  then skipping the one render-setup trigger method involved instead of a numeric
-  parameter (also verified live, also zero effect, and confirmed no other side
-  effect either). Both eliminations narrow the real cause toward shader/native
-  rendering, below what managed-object reflection can reach — written up
-  mid-investigation because a negative result that narrows the search is still
-  real progress.
+  — RE-PARKED. A VR-only black background on one specific screen survives three
+  independently-tested fix attempts: forcing the screen's own blur/FOV fields to
+  neutral (zero effect), skipping the one render-setup trigger method involved
+  (also zero effect), then skipping the screen-open call entirely to fall back on
+  a different, working interaction's clean display path — which instead made it
+  *worse* (blacked out the whole screen, not just the background), showing the
+  working case's cleanliness comes from a structurally separate code path, not
+  from the mere absence of that one call. Nine total eliminations across two
+  sessions now point at shader/native-rendering level, past what reflection or
+  method-hooking can reach.
 - [`case-studies/2026-08-15-deleting-a-feature-without-breaking-its-neighbor.md`](case-studies/2026-08-15-deleting-a-feature-without-breaking-its-neighbor.md)
   — removing a retired, confirmed-game-breaking toggle looked like it meant
   deleting the native-method hook it lived in, until a full read of that hook's

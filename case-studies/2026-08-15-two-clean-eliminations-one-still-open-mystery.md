@@ -1,11 +1,12 @@
-# Two clean eliminations, one mystery still open — a background that won't stop going black
+# Three clean eliminations and one that made it worse — closing out a background that won't stop going black
 
-**Status:** OPEN, but narrowed. Two independent, plausible-looking fixes for a
-background-rendering bug have now both been tested to completion and cleanly ruled
-out — not abandoned on a hunch, but confirmed dead via live testing after each one
-appeared to take effect exactly as intended. Writing this up now, mid-investigation,
-because a negative result that narrows the search space is still real progress, and
-the repo this comes from exists specifically to record that kind of result.
+**Status:** RE-PARKED. Three independent, plausible-looking fixes for a
+background-rendering bug have now all been tested to completion — two cleanly ruled
+out with zero effect, one that actually made the symptom worse. Combined with six
+earlier rounds against a different set of properties in an earlier session, every
+angle reachable through reflection and native-method hooking is now exhausted. Not
+a failure of the investigation — a complete, confident answer about where the fix
+does *not* live, which is exactly the kind of result this repo exists to record.
 
 ## The symptom
 
@@ -60,28 +61,61 @@ chasing. A system can have a real, single-purpose trigger call that's necessary 
 correct rendering elsewhere while having nothing to do with the one visual bug in
 front of you.
 
+## Attempt three: skip the whole screen, not just one call inside it — and it got worse
+
+A separate, working reference point existed the whole time: a different interaction
+(taking an item out of storage, as opposed to picking one up from the world) shows
+no black background at all, and separately-confirmed diagnostic hooking had already
+shown *why* — that interaction never calls the screen-open method in the first
+place. It uses a completely different, structurally separate display path.
+
+The obvious next idea: make regular pickups skip that same call too, the same way
+the working interaction already effectively does, hoping to fall into whatever
+clean path the working case uses. Built carefully scoped — gated so it only ever
+applies during an actual pickup, never during a player deliberately re-examining an
+item they already own from their inventory menu, which uses the exact same
+underlying method for an unrelated purpose.
+
+Tested live, with the feature that normally drives these pickups both off and on to
+rule out interference: **the entire screen went black, not just the background.**
+Worse than the original symptom, where at least the item itself still rendered
+correctly against the broken backdrop.
+
+**Lesson:** "a working alternative doesn't call this method" does not imply "not
+calling this method gets you the working alternative's behavior." The working case's
+cleanliness almost certainly comes from something specific to its *own* separate
+code path, not from the mere absence of one call in the broken path. Skipping a call
+that the broken path's own downstream logic silently depends on to reach a
+half-working state can produce a *more* broken state than leaving it in — skipping
+is not neutral just because it avoids calling something suspect.
+
 ## Where this leaves the investigation
 
-Both attempts were left in the shipped mod as inert, harmless toggles — off by
-default, clearly labeled as confirmed dead ends rather than deleted, on the theory
-that a documented negative result is worth more sitting next to the code than
-erased from it. Neither should be re-tested blind; both are now conclusively ruled
-out, not merely untried.
+All three toggles were left in the shipped mod as inert, harmless switches — off by
+default, clearly labeled as confirmed dead ends (or worse) rather than deleted, on
+the theory that a documented negative result is worth more sitting next to the code
+than erased from it. None should be re-tested blind; all three are now conclusively
+resolved, not merely untried.
 
-The real cause is still unknown. What both eliminations narrow it to: not a numeric
-render parameter reachable through reflection on the screen's own object, and not
-this particular render-setup trigger call. The remaining live hypothesis is that
-whatever actually produces the black background sits at the shader or native
-rendering level, below what reflection into managed objects can reach or influence
-directly — which would mean the fix, if there ever is one, looks structurally
-different from either attempt here.
+The real cause is still unknown, and this specific investigation is now closed
+without a fix. Nine total eliminations across two sessions — six against one set of
+properties, three against another, plus the render trigger call and the screen-open
+call itself — point at the same conclusion from every angle tried: whatever actually
+produces the black background sits at the shader or native rendering level, below
+what reflection into managed objects, or hooking their methods, can reach or safely
+influence. Progress from here needs a fundamentally different kind of tool — frame
+capture/shader debugging, or native plugin work — not another reflection-based
+guess.
 
 ## General lesson
 
-A confirmed-successful write with zero observed effect, repeated across more than
-one independently-plausible target, is real signal — it's not "the fix didn't work
-yet," it's "this whole *category* of fix (numeric render parameters on this
-object) is not where the bug lives." Recognizing that shift — from "try harder on
-this lever" to "stop pulling this class of lever entirely" — is what let the second
-attempt spend its effort on a structurally different kind of candidate (a trigger
-method, not a parameter) instead of re-testing variations on the first idea.
+A confirmed-successful write (or a confirmed-successful skip) with zero — or
+negative — observed effect, repeated across multiple independently-plausible
+targets, is real signal, not a string of unlucky guesses. Two clean zero-effect
+results said "stop adjusting parameters on this object." A third result that made
+things actively worse said something sharper: the difference between the working
+and broken cases isn't a missing or extra call at all, it's two genuinely different
+systems, and no amount of nudging calls in the broken one will produce the working
+one's behavior. Recognizing when a whole *category* of intervention is exhausted —
+not just one specific attempt within it — is what let this close cleanly instead of
+generating a tenth variation on the same idea.
