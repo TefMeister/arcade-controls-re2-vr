@@ -1,10 +1,16 @@
 # Laser/red-dot sight beam drifting off aim, in VR only
 
-**Status:** Closed as a dead end after 17 separate mechanisms were
-eliminated across three sessions — a deliberate stopping point, not an
-abandoned thread. Documented in full because the elimination process —
-including the parts that led nowhere, and the reasoning for stopping —
-is the actual value here, not just the eventual (non-)answer.
+**Status:** Reopened, and paused mid-investigation (not abandoned) after a
+follow-up session found genuinely new ground via live method hooking — the
+exact technique the original closing note flagged as the one remaining
+serious avenue, never attempted until now. Sections through "Round seven"
+and "Where it actually landed" below are the original three-session
+investigation, left as written since the conclusions there still hold on
+their own terms. Everything from "Round eight" onward is a later session
+that picked it back up and found real new structure, plus a critical
+correction to the original framing (see below) — documented in full for
+the same reason as the first seventeen rounds: the reasoning behind a
+dead end, or a pause, is the actual value here.
 
 ## The symptom
 
@@ -304,6 +310,166 @@ dead end, not a paused one — but a well-documented dead end is exactly
 the kind of thing that should save the next person (or the next AI) from
 re-walking the same seventeen steps if they ever pick this back up.
 
+## Round eight: a wrong assumption hiding inside a "confirmed" reframe
+
+A later session picked this back up after an unrelated fix (a torso/spine
+straightening feature, elsewhere in the same mod) started visibly pointing
+the weapon mesh the wrong way on a flat screen. Reasonable-looking
+reasoning at the time: since the weapon mesh itself was now provably wrong
+on flat-screen, maybe the *original* dot-drift bug from this case study was
+never a laser-specific bug at all — maybe it was always this same mesh-pose
+problem, just misdiagnosed back in round one through seven.
+
+A full session was spent building this out: multi-stage same-frame capture
+of the muzzle joint's own forward direction, comparing it against camera
+direction across dozens of live tests, eventually finding a real, solid,
+quantified result — the weapon mesh's own orientation swings roughly 2x
+wider than the camera's own head-turn range specifically when the
+spine-straightening fix is active. Genuinely useful data. Wrong target.
+
+**The player corrected it with one sentence:** in VR, the weapon mesh
+*never visibly moves at all* — it stays rock-solid. Only the dot moves.
+The mesh-pointing-left symptom was a flat-screen-only thing, a *different*
+bug living in a different part of the same mod, and every measurement that
+session had been (validly) characterizing that other bug, not this one.
+
+**Lesson:** a reframe that "explains everything so far" and produces real,
+reproducible numbers is not the same as a *correct* reframe. The tell in
+hindsight was that nobody had gone back to first principles and re-asked
+"what does the player actually see, on the actual platform they use" before
+building an entire measurement apparatus on the assumption. A whole
+session's worth of clean data was real and worth keeping (it fully
+resolved *that* other bug), but it took a plain factual correction from the
+person actually wearing the headset to notice the two symptoms had been
+silently merged into one investigation.
+
+## Round nine: two new leads, four new dead ends, and a genuinely new object
+
+With VR/flat-screen properly separated again, the session picked the
+original technique back up: live method hooking, the thing round seven's
+closing note called the one remaining serious avenue. Two useful
+discoveries, quickly:
+
+- The multi-stage capture technique from round eight (sampling a value at
+  five points across the same frame) was reused here, applied to the
+  original suspect field from round three (`LaserSightTipPosition`). A
+  clean, dramatic, *reproducible* result: with the spine-straightening fix
+  **off**, that field's own direction barely moves at all when the player
+  turns their head — roughly 3-4% of the head's own range. With the fix
+  **on**, it swings roughly ten times more. A real, large, specifically-
+  triggered effect, isolated cleanly for the first time.
+- Then the player checked it by eye, and the dot still visibly drifted
+  under every hook-timing configuration tested — including ones where the
+  measured field's coupling had numerically dropped back to the "off"
+  baseline. **The field everybody had been trusting as a stand-in for "the
+  dot's real position" was never that.** It's a real, live, measurable
+  value that correlates with the bug, exactly as round three concluded
+  back at the start of this whole investigation — a downstream readout,
+  not the thing the renderer actually consumes. Nine months (in
+  investigation-time) of trusting a correlated variable as if it were the
+  actual mechanism, confirmed wrong the same way round three first
+  suspected it, just with much better instrumentation this time.
+
+**Lesson:** a value correlating strongly and reproducibly with a bug is
+still not the same as being *caused by* the same thing the bug is caused
+by. The only real test is the one nobody can automate: does the thing you
+can actually see change. Build the instrumentation, trust the player's
+eyes over the instrumentation's numbers when they disagree.
+
+With that settled, the session went back to a structural gap from round
+one: the original child-GameObject check only ever looked *one level deep*
+at the weapon and player. A full recursive walk of the *entire* transform
+tree — not filtered by name, not stopped at the first level — found real
+structure round one's shallower check had missed entirely: a `LaserSight`
+child object, itself holding a `Light` child (with its own further child,
+an actual particle-effect object) and a separate `Line` child. The `Line`
+object's own component was a plain mesh — consistent with it being the
+beam, which has always tracked correctly. The particle-effect object under
+`Light` was a real VFX player component — a much more plausible dot
+candidate than anything found in the first three sessions.
+
+Better still: the `LaserSight` object itself carried a dedicated,
+purpose-built native class — a controller class that had never once shown
+up in round seven's whole-game name search, despite that search
+specifically trying the obvious words. (Worth noting for anyone repeating
+a name-search technique: it isn't exhaustive against every possible naming
+convention a developer might have used, only the ones a human tester
+thought to try.)
+
+That controller class turned out to hold real, promising-looking members —
+an explicit "set position" method, a field plausibly named for the pointer/
+dot itself, and (as a bonus, unrelated to the main thread) the sight's true
+emission joint name, which turned out to be a *different* joint than the
+one every earlier round's muzzle-direction measurements had been reading.
+Four follow-up hooks and reads, in order:
+
+1. Hooked the controller's "set position" method. Never fired once, across
+   a real, confirmed-active ~36-second capture window. Third confirmed-dead
+   write-hook in this investigation's history (after the original field
+   setter in round three, and an engine-level decal-color hook tried in an
+   earlier live-hooking pass not detailed here).
+2. Read the sight's own true emission joint directly (rather than the
+   joint every earlier round had been assuming was equivalent) and ran the
+   same on/off amplitude comparison that worked so well in round eight.
+   Flat, uncoupled, nearly identical between the fix on and off — ruling
+   out "the dot just passively follows this joint" as the mechanism,
+   since if it did, it should show the same coupling the visible dot does.
+3. Walked the actual parent chain of the two ordinary child objects
+   (`Light`/`Line`) — confirmed completely ordinary, static, weapon-
+   skeleton parenting, nothing unusual. Consistent with those staying
+   visually stable. But the pointer/dot field turned out **not** to be a
+   GameObject at all — it returned a wrapper for a *dynamically-created*
+   visual effect instance, a structurally different kind of object than
+   the two static ones sitting right next to it in the same hierarchy.
+4. That dynamic-effect wrapper exposed what looked like the perfect
+   accessor — a method returning the effect's own live position data.
+   Polling it every frame, live, across a full on/off capture: empty,
+   every single sample, both conditions. Investigating *why* it was empty
+   turned up a real, generalizable reflection gotcha: the method's return
+   type's name matched the exact pattern a compiler generates for an
+   iterator method (a `yield`-based method in C#) — not a list, not an
+   array, a lazily-evaluated sequence object that has to be pulled from
+   with the two-step "advance, then read" pattern real language iterators
+   use, not indexed or measured for a count. Fixed the extraction to use
+   that pattern correctly — and the sequence was still empty, every frame,
+   confirmed genuinely (not a leftover shape-guessing bug this time).
+
+Four real leads, four real dead ends, on an object that had never been
+found before this session. Paused here, one field on the same class still
+unchecked, at the player's choice to pick it back up later rather than
+push through fatigue.
+
+## A late clue that may reframe the whole investigation again
+
+Right at the pause point, the player described something that hadn't come
+up in any of the visual bug reports so far: the sense of being "in" the
+VR space itself feels different specifically when aiming with the
+spine-straightening fix active — described as feeling almost like
+room-scale positional movement is coupling to head rotation, present only
+while the aim trigger is actively held *and* the fix is on, gone the
+instant either condition drops. Not "a UI element is in the wrong place" —
+a description of altered presence/embodiment.
+
+This hasn't been investigated yet, and it might be describing the exact
+same underlying bug this whole case study has been chasing, just noticed
+from a different angle (a rendering artifact can absolutely also read as
+"something about how my view feels wrong" if it's subtle enough not to
+consciously register as "that one dot is misplaced"). Or it might be a
+second, separate symptom of the same root mechanical cause — one process
+change (forcibly overwriting one bone's rotation every frame, elsewhere in
+the same mod) rippling into more than one visible effect. Left here
+un-investigated deliberately, because it's exactly the kind of clue that's
+easy to lose between sessions if it isn't written down verbatim.
+
+**Lesson:** a qualitative, first-person description from the person
+actually in the headset can carry information no field dump can — "it
+feels different" is real data, even before it's been turned into a
+hypothesis. Write it down precisely, in the reporter's own words, before
+trying to translate it into a technical theory; the translation can happen
+later, but the original phrasing is easy to lose and often contains detail
+("only when both conditions are true together," here) that a paraphrase
+would flatten.
+
 ## Process lessons, independent of the eventual answer
 
 - **Get a magnitude before guessing a mechanism.** A vague "it's wrong"
@@ -357,3 +523,32 @@ re-walking the same seventeen steps if they ever pick this back up.
   failure to write up. Seventeen eliminated mechanisms with real evidence
   is worth more to the next investigator than a vague "we tried some
   stuff and gave up."
+- **A reframe that "explains everything so far" still needs a sanity check
+  against first-hand observation before you build a session's worth of
+  tooling on top of it.** Clean, reproducible numbers are not the same as
+  numbers measuring the right thing — the fastest sanity check is asking
+  "what does the person actually using this actually see," not just
+  whether the new theory is internally consistent with prior results.
+- **A value correlating with a bug is not the same as being the bug's
+  cause**, even when the correlation is clean, large, and reproducible
+  across a real controlled test. The only test that actually discriminates
+  is whether the *visible* symptom changes — trust that over an
+  instrument's numbers when the two disagree.
+- **A C# method whose return type name matches the compiler's iterator
+  pattern (something like `<MethodName>d__N`) is a lazy sequence, not a
+  list or array** — it won't respond to "get elements"/"get length"/"get
+  count" style calls, because none of those apply to it. It has to be
+  pulled from with the "advance, then read current" pattern real
+  enumerators use. Worth checking a return type's actual name before
+  assuming it's a collection just because the method name is plural.
+- **A structural check that only looks one level deep isn't the same
+  check as looking at the whole tree.** A "zero children" result from
+  years earlier turned out to mean "zero *direct* children" — real
+  structure was sitting two and three levels further down, on an object
+  a shallower check was never going to see.
+- **A qualitative, first-person description ("it feels different") is
+  real data, not a vague complaint to be translated away immediately.**
+  Write down the reporter's exact words, including the precise conditions
+  they describe ("only when both X and Y are true"), before turning it
+  into a technical hypothesis — the exact phrasing often carries detail a
+  paraphrase would lose.
