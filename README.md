@@ -153,6 +153,23 @@ spending the tokens on it.
   Deleting the whole hook would have silently broken that second feature with no
   error at all — caught by reading the hook fully before cutting anything, not by
   assuming "this hook = this one feature."
+- [`case-studies/2026-08-15-a-dead-end-that-came-back-worse.md`](case-studies/2026-08-15-a-dead-end-that-came-back-worse.md)
+  — a bug closed as a 17-mechanism dead end recurs when its root-cause feature is
+  rebuilt from scratch weeks later, now worse (tracks head pitch too). Two manual
+  offset attempts in different reference frames both produce zero effect (a stronger
+  negative than either alone). First live-hooking pass on this bug: a property setter
+  confirmed to never fire despite its backing field changing every frame, and a
+  decal-rendering system confirmed to exist but never touched during the symptom —
+  both cleanly eliminated by watching live calls instead of reading static state.
+  Lands on the same practical workaround as the original, arrived at faster.
+- [`case-studies/2026-08-15-three-independent-negatives-and-what-they-add-up-to.md`](case-studies/2026-08-15-three-independent-negatives-and-what-they-add-up-to.md)
+  — three structurally different searches (player-component reflection, reusing an
+  existing native detection system, physics raycasting the surrounding space) each
+  return a clean, confirmed negative for a VR camera bug during ladder-climbing —
+  including catching a misleading first result caused by a manual-trigger diagnostic
+  interrupting the very state it was trying to measure. The *shape* of three
+  independent negatives becomes the actual finding: evidence for a cause outside
+  what any game-side reflection or physics probing can reach.
 - [`techniques/reframework-reflection-toolkit.md`](techniques/reframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
