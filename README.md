@@ -18,8 +18,17 @@ specific bugs and features, see
 
 ## Releases
 
-*(list finalized against confirmed Nexus upload status — see each
-version's own notes)*
+All 12 versions actually published on Nexus, oldest to newest. Each is a
+GitHub Release with the exact zip that went up on Nexus attached — see the
+[Releases page](https://github.com/TefMeister/arcade-controls-re2-vr/releases)
+for downloads and per-version notes.
+
+v1.0.0 · v1.0.1 · v1.1.0 · v1.2.0 · v1.2.1 · v1.2.2 · v1.2.3 · v1.2.4 ·
+v1.3.0 · v1.3.1 · v1.3.2 · v1.4.0
+
+(A never-uploaded v1.4.0 build and the standalone `GripSuppressionVR-v1.0.0`
+side-release exist in the dev-archive repo's history but are deliberately
+not listed here, since they were never actually published.)
 
 ## Credits
 
