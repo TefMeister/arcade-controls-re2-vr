@@ -200,5 +200,15 @@ implied about where to look next.
 
 The mod this comes out of adds VR support on top of an existing
 flat-screen REFramework VR base, with custom weapon-handling, IK, and
-posture behavior layered on. No mod source is included here — this repo
-is written explanation only.
+posture behavior layered on. This repo is written explanation only — no
+mod source lives here.
+
+**Companion repos**, added 2026-08-15:
+[`arcade-controls-re2-vr`](https://github.com/TefMeister/arcade-controls-re2-vr)
+holds the Nexus-confirmed release history, and
+[`arcade-controls-re2-vr-dev-archive`](https://github.com/TefMeister/arcade-controls-re2-vr-dev-archive)
+holds the full, unpolished development archive (snapshots, dead ends,
+probes, cross-machine session handoffs) behind everything documented
+here. Credits and a disclaimer (anyone whose work is referenced anywhere
+across these repos can ask for anything changed or removed, no questions
+asked) live in both.
