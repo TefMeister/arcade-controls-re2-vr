@@ -1,0 +1,6 @@
+shotgun pump speed
+
+sitting in CFG.manual_pump in re2_vr_reload.lua:
+
+pull_travel_speed = 7.0,  -- parked -> pulled back, on trigger press
+push_travel_speed = 5.0,  -- pulled back -> rest, on trigger release

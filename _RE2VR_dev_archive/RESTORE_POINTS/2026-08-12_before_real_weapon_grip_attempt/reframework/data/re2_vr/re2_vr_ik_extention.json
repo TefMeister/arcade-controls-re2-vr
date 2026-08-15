@@ -1,0 +1,26 @@
+{
+    "enabled": true,
+    "max_m": 0.16,
+    "prestart_m": 0.025,
+    "tau_s": 0.10,
+    "slack": 0.018,
+    "forward_gate_min": 0.0,
+    "use_side_forward_gate": true,
+    "apply_fp_hand_offset": true,
+    "twohand_boost_enabled": true,
+    "twohand_l_extra_max_m": 0.08,
+    "twohand_l_extra_prestart_m": 0.0,
+    "use_ik_target_matrix": false,
+    "auto_standing_height_openxr": true,
+    "auto_standing_height_grace_s": 3.0,
+    "auto_standing_height_frame_delay": 60,
+    "slide_dock_fixes": {
+        "ik_hash_side_detection": true,
+        "ik_early_joint_pos": true,
+        "ik_force_full_snap": true,
+        "ik_repatch_post_hook": true,
+        "apply_after_update_motion": true,
+        "apply_late_passes": true,
+        "apply_l_arm_hand": true
+    }
+}
