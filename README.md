@@ -42,9 +42,10 @@ day.
 This mod would not exist in its current form without other people's work
 and generosity:
 
-- **Andyalpa** — the original base VR conversion this mod was built on
-  top of and extended. Andyalpa has given explicit permission for that
-  work to be used as a base for further modding.
+- **Andyalpa** — creator of RE2VRMODRELOADED, the original base VR
+  conversion this mod was built on top of and extended. Andyalpa has
+  given explicit permission for that work to be used as a base for
+  further modding.
 - **Oziman** — creator of the "VR Hands" mesh mod, evaluated during
   development (including a real investigation into an RT-vs-Non-RT mesh
   format mismatch, written up in the notes repo) — not part of the final
