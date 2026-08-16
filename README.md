@@ -41,7 +41,7 @@ counts.
   the mod-loading/scripting framework this entire mod runs on.
 - **Andyalpa** — creator of RE2VRMODRELOADED, the base VR conversion this
   mod builds on top of (not the base REFramework VR conversion itself).
-  Used with Andyalpa's direct, explicit permission.
+  Used with Andyalpa's permission.
 - **alphaZomega** — [EMV-Engine](https://github.com/alphazolam/EMV-Engine),
   a REFramework Lua toolkit. A specific hook-timing technique from its
   live bone-posing tool was studied and reused (as a technique, not
