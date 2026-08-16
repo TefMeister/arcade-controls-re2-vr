@@ -761,3 +761,499 @@ This is the project's whole known paper trail, start (v1.0.0) to today, in one p
   `BlackFade`/`WhiteFade`'s FULL type hierarchy unfiltered by keyword (both the
   GameObject and the raw `element` from the draw callback), since the actual
   alpha/color control's naming is unknown. Syntax-checked clean. **Not yet run live.**
+
+- **2026-08-15_laser_dot_multistage_probe** -- resumed the paused laser/red-dot sight
+  drift investigation ([[re2_vr_laser_sight_drift_status]]). Extended the existing
+  `re2_vr_laser_dot_probe.lua` (not a new file) with the "next reasoned-but-untried
+  step" noted at the pause point: `LaserSightTipPosition` plus the mod's own
+  known-accurate aim correlation data now logged at 5 pipeline stages within the SAME
+  frame -- PRE/POST `LateUpdateBehavior`, PRE/POST `UpdateJointExpression`, PRE
+  `PrepareRendering` -- the identical multi-stage technique `re2_vr_aim_alignment_probe.lua`
+  used to pin down spine-correction timing. Burst/frame-gating refactored to a
+  `should_log()` flag decided once per frame so N frames of burst means N frames with
+  all 5 stages logged, not N log lines split arbitrarily. Existing setter and
+  `Stamp.set_Color` hooks left installed unchanged (both confirmed dead twice over,
+  harmless to leave running) -- UI text updated to mark them as confirmed-dead rather
+  than open questions. Syntax-checked clean. **Untested in VR** -- goal is finding
+  WHICH of the 5 stages the tip value's discontinuous garbage-to-tracking jump lands
+  between.
+
+- **2026-08-15_laser_dot_flatscreen_ground_truth** -- player tested the multi-stage
+  probe flat-screen with spine correction ON (Pre timing, the default) and directly
+  confirmed the drift IS visible on flat-screen too -- overturns the old investigation's
+  assumption that this was VR-only, and means it no longer needs a headset session to
+  diagnose. Also found the actual capture's `crosshair_pos`/`shoot_pos`/`shoot_dir`
+  fields were `nil` throughout: `re2_vr_crosshair.lua`'s muzzle/crosshair correlation
+  data is gated behind `vrmod:is_hmd_active()` at every call site, so it never
+  populated regardless of what was actually broken. Rather than touch the shipped
+  crosshair script, `re2_vr_laser_dot_probe.lua` now resolves its own VR-independent
+  ground truth -- copied `re2_vr_crosshair.lua`'s `update_muzzle_data()` joint-
+  resolution logic verbatim (that logic itself was never VR-dependent, only its call
+  site was) to get a real muzzle position + forward direction, then computes the
+  actual angular deviation in degrees between the muzzle's true aim direction and
+  where `tip` points -- a real number matching how this bug has always been described
+  ("30-50 degrees off"), logged per-stage as `dev_deg=`. Also confirmed via the log
+  timestamp that the live game session hadn't reloaded scripts since the prior
+  snapshot's edit (old single-line format, no `stage=` field) -- flagged to the player
+  that Reset Scripts (or relaunch) is needed before the new multi-stage/dev_deg output
+  will actually appear. Syntax-checked clean. **Not yet re-tested with the reloaded
+  script.**
+
+- **2026-08-15_laser_dot_camera_ground_truth** -- player Reset Scripts and re-ran the
+  capture (flat-screen, spine correction ON, Pre timing, ~5s aim). Full 90-frame/
+  5-stage burst (450 log lines) analyzed: `dev_deg` (tip vs. the muzzle joint's own
+  forward direction) never exceeded 0.31 degrees the entire capture -- `tip` tracks the
+  muzzle joint essentially perfectly, so `LaserSightTipPosition` itself is NOT
+  internally broken relative to where the weapon mesh is actually pointing. This
+  reframes the whole investigation: the visible "points left" symptom is very likely
+  NOT a laser-dot-specific rendering bug at all -- it's the MUZZLE JOINT ITSELF (i.e.
+  the weapon mesh's actual in-hand pose, driven by arm IK) being misoriented, with the
+  dot just faithfully rendering wherever that already-wrong joint points. This would
+  also explain why the original 17-mechanism investigation never found a laser-
+  specific culprit -- there may not be one. Added a second ground-truth comparison to
+  test this directly: `dev_deg_vs_cam`, the angle between the muzzle joint's forward
+  direction and the camera's actual look direction (camera forward isn't part of the
+  arm-IK chain spine correction disturbs, so it's a real independent reference). If
+  `dev_deg_vs_cam` comes back large while `dev_deg` (tip vs. muzzle) stays near zero,
+  that confirms the bug is upstream in arm-IK/weapon-mesh pose -- the same class of
+  problem `re2_vr_posture_spine_straighten_override.lua`'s manual aim-compensation
+  sliders and the original 2026-08-05 Pre/Post hook-timing fix already target, not a
+  new laser subsystem to chase. Syntax-checked clean. **Not yet re-tested with
+  dev_deg_vs_cam.**
+
+- **2026-08-15_laser_dot_wrist_ground_truth** -- player re-ran the capture; found
+  `dev_deg_vs_cam` came back EXACTLY 0.00 across all 450 log lines, too perfect for a
+  real independent measurement. Root cause: `get_muzzle_ground_truth()` has a
+  camera-forward FALLBACK for "camera type" weapons (`_FireBulletType == 0`) -- this
+  weapon apparently used that path, meaning `muzzle_fwd` WAS camera forward by
+  construction, making the comparison circular/uninformative, not a real zero-
+  deviation finding. Fixed by returning a third value, `src`, on every call so log
+  lines now record which path resolved (`joint(fire_type=N)` vs
+  `camera_fallback(fire_type=N)`) instead of silently assuming. Also added a second,
+  unambiguous ground truth: `get_wrist_ground_truth()` reads `r_arm_wrist` directly
+  (the actual joint the weapon mesh is physically skinned to/attached from, and the
+  same joint `re2_vr_posture_spine_straighten_override.lua`'s aim-compensation
+  sliders already manipulate for this exact symptom) -- nothing camera-locks it, so
+  `dev_deg_wrist_vs_cam` (wrist forward vs. camera forward) is a real test of whether
+  the visible mesh itself is misaimed, independent of any fire-calculation
+  abstraction. **Mid-edit, player directly confirmed the reframe visually without
+  even needing the new metric**: "weapon mesh is definitely twisted and the red dot
+  is pointing where the weapon is pointing" -- i.e. the mesh itself is twisted, and
+  the dot faithfully follows it. This settles the "is it a laser bug or a mesh-pose
+  bug" question by direct observation; the new wrist-vs-camera metric is now for
+  quantifying/pinpointing the fix, not for settling whether the reframe is correct.
+  Syntax-checked clean. **Not yet re-tested with the new metric.**
+
+- **2026-08-15_aim_align_probe_ik_hook_fix** -- with the reframe confirmed (weapon
+  mesh itself is twisted, not a laser-dot bug), pivoted to the purpose-built
+  `re2_vr_aim_alignment_probe.lua` (auto-capture, previously off by default) instead
+  of continuing to extend the laser probe. Player ran a capture (spine correction ON,
+  Pre timing, ~5s aim): spine0_y correction confirmed applying correctly (raw
+  ~-0.3256 at PRE LateUpdateBehavior -> corrected ~-0.0001 by POST, held through
+  PrepareRendering/UpdateJointExpression), but **zero `IkArmFit.updateIk` log lines
+  appeared despite the hook being confirmed installed** -- the native method never
+  fired during the whole capture. Root cause: `install_ik_hook()` only called
+  `get_method("updateIk")`, silently grabbing a single overload; two other scripts in
+  this mod (`re2_vr_ik_extention.lua`, `re2_vr_recoil.lua`) both successfully hook
+  this same method by iterating ALL methods named `updateIk` via `get_methods()` and
+  hooking every one (both log "(2)" on install -- 2 overloads), which is how they
+  avoid this exact trap. Fixed `re2_vr_aim_alignment_probe.lua` to match that proven
+  approach (iterate all overloads, `get_method` single-overload fallback only if that
+  finds zero). Syntax-checked clean. **Not yet re-tested with the fixed hook.**
+
+- **2026-08-15_removed_from_live_autorun** -- player asked to remove two files from
+  live `reframework\autorun\` to keep it clean, since neither is currently being
+  actively worked: `re2_vr_suppress_sight_attachment.lua` (the laser-drift
+  investigation's suppression fallback, no longer the right fix now that the bug is
+  understood to be arm-IK/weapon-mesh pose, not laser-specific -- see
+  [[re2_vr_laser_sight_drift_status]]) and `re2_vr_ladder_camera_probe.lua` (still
+  PAUSED, not abandoned -- see [[re2_vr_ladder_camera_status]]). Both copied here
+  before deletion; restore from this snapshot back into `reframework\autorun\` if
+  either investigation resumes -- neither is present in the live folder anymore.
+
+- **2026-08-15_hand_head_coupling_probe_created** -- player tested in real VR: with
+  Aim Compensation fully OFF (ruling that feature out), the weapon/pointer still
+  visibly swings when just turning the HEAD, controller held still. This is a much
+  bigger finding than the torso-twist thread -- it's a BASE VR hand-tracking coupling,
+  not specific to today's spine-correction or aim-compensation work. Suspect
+  identified via code review (not yet confirmed): `re2_vr_ik_extention.lua`'s
+  `get_fp_style_hand_world_pos()` (~line 636) takes the controller's real-world
+  offset from the HMD (both from `vrmod:get_position()`, which -- based on how the
+  raw `get_vr_controller_world_pos()` result is used AS-IS elsewhere in the same file
+  as a valid absolute hand position -- appear to already be true world-space
+  coordinates) and then RE-ROTATES that offset by the camera's CURRENT/live yaw
+  before adding it back to the camera position. If the inputs are already
+  world-space, this re-rotation is redundant and wrong -- it would bake live head yaw
+  into the hand target a second time, visibly swinging the computed hand position as
+  the player turns their head even with the controller held still, exactly matching
+  the report. New file `re2_vr_hand_head_coupling_probe.lua` (autorun, read-only, not
+  shipped) mirrors that function's exact math step by step (offset, yaw-only
+  camera rotation, final hand_pos) with every intermediate value logged, so this can
+  be confirmed/denied with real numbers rather than more code-reading. This function
+  is heavily load-bearing (published globals used for hand tracking throughout the
+  mod), so a live-verified diagnosis is required before any patch is attempted --
+  deliberately not touching `re2_vr_ik_extention.lua` yet. Syntax-checked clean.
+  **Untested -- next step: player holds the right controller still, turns head
+  left/right, checks whether `offset` stays ~constant while `hand_pos` still swings.**
+
+- **2026-08-15_hand_head_coupling_confirmed_standing_origin_check** -- player ran the
+  test (right controller held still, ~70s of turning head left/right, yaw swept
+  roughly -52 to +57 degrees). Full capture analyzed (12,356 frame-pairs): filtered to
+  6,192 pairs where the controller moved <0.5mm frame-to-frame (genuinely still) but
+  yaw was changing -- **`hand_pos` still moved in those frames**, averaging ~0.012
+  units of movement per degree of yaw change, backing out to an implied offset
+  magnitude (~0.68) consistent with the larger `offset` lengths actually observed
+  (up to 0.78). This is the expected signature of re-rotating a roughly-fixed vector
+  by live head yaw -- CONFIRMED with real numbers, not just code-reading. Correction
+  to the original suspect writeup: `ctrl_pos`/`hmd_pos` are NOT already world-space
+  (small numbers like 0.25/-0.29/-0.47, clearly a local tracking-space frame -- real
+  world coords in this session were ~-12/1.5/-18) -- so the rotation step is likely
+  necessary in principle, just probably using the wrong (live, not fixed) yaw source.
+  Cross-referenced [[re2_vr_ladder_camera_status]], which independently theorized
+  (unconfirmed there too) that `vrmod:get_standing_origin()`'s `w` component is a
+  fixed play-space calibration yaw -- added read-only logging of it to
+  `re2_vr_hand_head_coupling_probe.lua` to check whether IT stays constant while
+  cam_yaw changes (if so, it's the right thing to substitute for the live yaw in
+  `get_fp_style_hand_world_pos`). Syntax-checked clean. **Untested -- next capture
+  should show whether standing_origin.w holds steady through head turns.**
+
+- **2026-08-15_standing_origin_ruled_out_cached_yaw_experiment** -- player re-ran the
+  test (right controller still, ~70s head turning, yaw swept -44.5 to +61.17 degrees).
+  `standing_origin` came back EXACTLY identical across all 3,619 samples (one unique
+  value: `(0.0420, 0.1268, -0.1808, w=1.0)`) -- confirmed genuinely fixed regardless of
+  head yaw, but the value's SHAPE (small x/y/z, w exactly 1.0) looks like a standard
+  homogeneous-coordinate position marker rather than a yaw angle -- likely tells us
+  WHERE the play-space origin is, not WHICH WAY it's rotated. Ruled out as a usable
+  yaw source (or at least not directly, without more work). Pivoted to a simpler,
+  self-contained fix: cache the camera's yaw ONCE instead of re-reading it live every
+  frame, sidestepping the need to find a "true" native calibration API at all.
+  Implemented as an EXPERIMENTAL, default-OFF toggle directly in
+  `re2_vr_ik_extention.lua` (`CFG.fp_hand_use_cached_yaw`, new `cached_fp_look_rot`
+  local) -- `get_fp_style_hand_world_pos()` branches on the flag: cached-once vs.
+  live-every-frame, all other logic unchanged. Enabled via
+  `reframework/data/re2_vr/re2_vr_ik_extention.json` (this file has no ImGui panel of
+  its own) for live testing. **Given how load-bearing this function is** (published
+  globals used for hand tracking throughout the whole mod), created a targeted
+  RESTORE_POINT first --
+  `RESTORE_POINTS\2026-08-15_before_fp_hand_cached_yaw_experiment\` -- covering just
+  the 2 touched files (not a full folder snapshot; see its README for why NOT to
+  `/MIR` it). Syntax-checked clean both for the live file and the reconstructed
+  restore-point copy. **Untested -- next step: player tests general hand tracking AND
+  the original weapon-twist symptom with this flag enabled, watching for regressions
+  as well as whether it fixes the head-yaw swing.**
+
+- **2026-08-15_laser_dot_10s_capture_spine_state** -- player tested the wrist-vs-cam
+  A/B (spine off then on, aim-triggered 90-frame bursts). Data came back too noisy to
+  interpret: `dev_deg_wrist_vs_cam` sat at an oddly large 60-115 degree baseline with
+  no clean on/off split -- traced to `wrist_fwd`'s baseline value pointing almost
+  straight up (~0.07, 1.0, -0.01), meaning `r_arm_wrist`'s AxisZ convention is very
+  likely the forearm's twist/roll axis, NOT "which way the gun points" the way the
+  MUZZLE joint's AxisZ is (confirmed/validated) -- an unverified assumption that
+  turned out wrong, so that specific metric isn't trustworthy. `dev_deg_vs_cam`
+  (muzzle vs. camera, the validated metric) was usable this time since this weapon
+  resolved through a real joint (`fire_type=3`, not the camera fallback) but couldn't
+  be cleanly split into on/off phases either, since (a) the burst-triggered capture is
+  too short (~1.5s) for a deliberate toggle-and-turn-head test and (b) the log had no
+  record of when spine correction was actually toggled. Two fixes, both requested by
+  the player: (1) added a time-based (`os.clock()`, not frame-count) "Start 10s
+  continuous capture NOW" button to `re2_vr_laser_dot_probe.lua`, replacing reliance
+  on the short aim-triggered burst for this kind of test; (2)
+  `re2_vr_posture_spine_straighten_override.lua` now publishes
+  `__vr_spine_correction_enabled` as a global every frame (same pattern
+  `re2_vr_holster.lua` already uses for `__vr_is_cinematic_blocking`), and the probe
+  logs it as `spine_on=` on every line -- so the on/off boundary is read directly from
+  the log, no timing/narration needed. Both files syntax-checked clean. **Untested --
+  next step: player presses the new button once, then freely aims/turns head while
+  toggling spine correction mid-window, for a clean single-capture A/B using
+  `dev_deg_vs_cam` (not the wrist metric, which remains unreliable until its axis
+  convention is separately verified).**
+
+- **2026-08-15_laser_dot_camfwd_raw_logged** -- player ran the 10s-capture A/B (spine
+  off then on, ~40s off / ~10s on). Result: `dev_deg_vs_cam` showed LARGE swings in
+  BOTH phases (off: range 97.3 deg avg 18.6; on: range 50.3 deg avg 21.1) -- no clean
+  split, and if anything OFF showed a wider range than ON, opposite the expected
+  direction. Root cause: `dev_deg_vs_cam` (gun direction vs. camera direction,
+  compared as a snapshot) is fundamentally the wrong metric for this test -- in a
+  correctly working system, gun direction and camera direction are SUPPOSED to be
+  independent (the whole point of 6DOF hand tracking), so a large absolute deviation
+  is normal/expected whenever the player looks somewhere different from where they're
+  aiming, regardless of any bug. This is the same category of methodological mistake
+  avoided in the earlier, successful hand/head coupling test -- that test worked
+  because it correlated FRAME-TO-FRAME CHANGE against camera yaw change (with the
+  controller held still), not a snapshot comparison. Fixed by adding `cam_fwd` as a
+  raw logged vector (previously only the derived angle was logged) to
+  `re2_vr_laser_dot_probe.lua`, enabling the same delta-correlation analysis to be
+  applied here. Syntax-checked clean. **Untested -- next capture: hold the weapon
+  reasonably steady (not deliberately moving the arm) while turning head, same as the
+  successful hand/head coupling methodology, so frame-to-frame muzzle_fwd change can
+  be correlated against frame-to-frame cam_fwd change, separately for spine on vs
+  off.**
+
+- **2026-08-15_laser_dot_delta_correlation_inconclusive_then_major_correction** --
+  player ran the delta-correlation test. Same-frame correlation between muzzle_fwd
+  delta and cam_fwd delta came back weak/inconclusive in both phases (r=0.075 off,
+  r=-0.055 on -- if anything backwards from expected), too noisy at the per-frame
+  level to read. **Major mid-session correction from the player:** the weapon MESH
+  itself never visibly moves at all in VR -- only the DOT does; the mesh visibly
+  pointing left was a FLAT-SCREEN-only observation. This means the whole session's
+  `muzzle_fwd`-based analysis up to this point was actually characterizing a SEPARATE
+  flat-screen-only bug (real, and still valid on its own terms -- see
+  `re2_vr_torso_twist_status` pass 8 for that finding, ~2.2x yaw-amplitude
+  amplification under spine correction), not the VR dot symptom. Player also gave a
+  sharp clue: "the dot is where the gun would be pointing if i was playing flat
+  screen" -- suggesting `LaserSightTipPosition` may still be driven by a native
+  camera-relative convergence calculation never redirected to VR-correct aim.
+  Restored `muzzle_pos` to the log line (needed to turn `tip` into a direction) and
+  added `dev_deg_tip_vs_cam`, the metric actually relevant to the dot.
+
+- **2026-08-15_spine_timing_logged_confirmed_10x_coupling** -- redo capture using
+  `dev_deg_tip_vs_cam`, analyzed via the amplitude-ratio technique (tip direction's
+  own yaw/pitch swing vs. camera's own swing during each phase -- the technique
+  validated earlier this session for the flat-screen finding). **Clean, dramatic
+  confirmation:** spine OFF: tip barely moves at all (yaw ratio ~0.03, pitch ratio
+  ~0.04 -- essentially locked regardless of head movement, exactly matching "rock
+  stable"). Spine ON: tip swings roughly 10x more (yaw ratio ~0.39, pitch ratio
+  ~0.53). This rules out "the dot is always camera-relative by design" (would show
+  equally high coupling in both phases) -- the coupling is specifically triggered by
+  spine correction being active. Player chose to test hook timing next (Post/Prepare,
+  already built into the panel, zero new code) over a "skip redundant writes"
+  experiment. Added `__vr_spine_correction_timing` global (same pattern as
+  `__vr_spine_correction_enabled`) so `spine_timing=` is now logged automatically --
+  no need to track which capture used which timing manually. Both files
+  syntax-checked clean. **Untested -- next step: player runs 10s captures at Post and
+  Prepare timing (spine correction on) to see if the coupling amount changes with
+  hook timing.**
+
+- **2026-08-15_hook_timing_visually_no_improvement** -- player tested Post and Prepare
+  live and reported "same thing as far as i can tell by eye" -- the dot STILL visibly
+  moves with HMD movement under both timings, despite the amplitude-ratio numbers
+  showing a ~10x improvement (matching the spine-off baseline). This is a real,
+  important discrepancy, not dismissed: it means `LaserSightTipPosition` (`tip`, the
+  field measured all session) is very likely NOT what actually drives the rendered
+  dot's position -- consistent with the ORIGINAL 17-mechanism investigation's own
+  standing conclusion that `tip` is probably a "downstream readout," not the true
+  render source (its setter never fires despite the value changing every frame).
+  Today's clean data on `tip` was real, but was apparently measuring a side-channel,
+  not the actual cause. Player explicitly chose to KEEP DIGGING for the real
+  mechanism rather than fall back to full sight-suppression (the practical fallback
+  built earlier this session, archived, still available).
+
+  New diagnostic, genuinely new ground: `dump_full_hierarchy()` added to
+  `re2_vr_laser_dot_probe.lua` -- recursively walks the WHOLE weapon and player
+  transform tree (all descendants, not just one level), logging every GameObject's
+  name and every component's type name at every depth. Real gap identified: the
+  original investigation's mechanism 2 ("separate child GameObject -- zero children
+  on both") only ever checked DIRECT children, never grandchildren -- if the dot/beam
+  VFX lives on a nested child (e.g. an attachment-socket prefab's own child decal
+  object), that check would have missed it. Also motivated by the player's own
+  earlier observation: the JMB Hp3's laser BEAM stays accurate while the DOT at its
+  end doesn't -- meaning they're two separate rendering mechanisms, and finding the
+  beam's (working) renderer in the tree could reveal a structurally-adjacent sibling
+  responsible for the (broken) dot. Uses the exact `get_Child`/`get_Next`
+  linked-list traversal already proven in `re2_vr_holster.lua`'s
+  `get_transform_children`/`find_flashlight_on_transform`, not a guessed API.
+  Depth-capped (8) and node-count-capped (400) so it can't run away. Read-only,
+  one-shot (button-triggered, not per-frame). 37/200 top-level locals in this file,
+  plenty of headroom. Syntax-checked clean. **Not yet run live -- next step: aim with
+  a sight/laser weapon equipped, press "Dump FULL weapon+player transform tree", then
+  read the log for any GameObject/component name suggestive of a laser/dot/decal/
+  sprite/billboard renderer not previously found.**
+
+- **2026-08-15_laser_dot_hierarchy_auto_dump_on_aim** -- player raised a valid
+  concern before testing the new hierarchy dump: clicking the overlay button while
+  physically holding RG in VR means taking a hand off the controller, which could
+  disturb the very aim state being measured -- same lesson already documented in this
+  mod's `re2_vr_aim_alignment_probe.lua` header. Added auto-trigger: a new checkbox
+  ("Auto-dump on next aim start") armed BEFORE aiming, fires `dump_full_hierarchy()`
+  itself the instant `SurvivorCondition.IsHold` flips true (same rising-edge pattern
+  already used for `auto_capture_on_aim`), then un-checks itself automatically so it
+  doesn't spam the log on every subsequent re-aim. No button press needed mid-aim.
+  Syntax-checked clean. **Untested -- next step: check the box, let go of the
+  overlay, aim normally with a sight/laser weapon equipped -- the dump fires itself.**
+
+- **2026-08-15_laser_sight_controller_dump_added** -- player ran the hierarchy dump.
+  Structural bug found and fixed first: `list:call("get_elements")` doesn't work
+  (looks up a real reflected method by that name, which doesn't exist, fails
+  silently) -- fixed to `list:get_elements()` (direct method syntax, a REFramework
+  Lua-binding sugar method, matching `utility/GameObject.lua`'s own proven usage).
+  Redo dump came back with real structure: `wp0200` -> `LaserSight` (components incl.
+  **`app.ropeway.LaserSightController`**, a genuinely NEW lead never found by either
+  investigation session) -> children `Light` -> `effect_LaserSight` (has
+  `via.effect.EffectPlayer`, a real VFX/particle player -- plausibly the actual dot
+  renderer) and `Line` (plain `via.render.Mesh`, consistent with being the confirmed-
+  accurate beam). New diagnostic `dump_laser_sight_controller()` added: finds the
+  `LaserSight` child GameObject, gets its live `LaserSightController` instance, dumps
+  ALL fields (with live values) and ALL methods across its full type hierarchy,
+  unfiltered by keyword. Wired into the same auto-dump-on-aim checkbox as the
+  hierarchy dump (both fire together, safely, no button press while holding RG) plus
+  its own manual button. Syntax-checked clean, 40/200 top-level locals. **Untested --
+  next step: check "Auto-dump BOTH", aim with a sight/laser weapon, read the log for
+  `LaserSightController dump:` for any field/method suggestive of the dot's actual
+  position/direction source.**
+
+- **2026-08-15_laser_sight_controller_setposition_hook** -- dump result: real,
+  promising structure found on `app.ropeway.LaserSightController` --
+  `setPosition` method (very likely what positions the dot every frame, especially
+  given a `lateUpdate` method is also present), `<PointerEffect>k__BackingField` +
+  `get_PointerEffect`/`set_PointerEffect` (very plausibly the dot itself, a
+  dedicated field distinct from the already-ruled-out `LaserSightTipPosition` side-
+  channel), and `SightEmitJointName = vfx_muzzle3` (the sight's own true emission
+  joint -- different from `vfx_muzzle1`/`vfx_muzzle2`, the only names
+  `get_muzzle_ground_truth()` ever checked -- a plausible explanation for some of
+  today's confusing/contradictory earlier numbers). Also confirms
+  `WeaponPartsBits = 4` (bit index 2) IS the correct sight bit for wp0200/JMB Hp3,
+  previously flagged as unverified for this weapon.
+
+  Hooked `setPosition`, gated to the same burst/10s-capture window as everything
+  else to avoid spam. Read-only: reads `PointerEffect`/`Light`/`Line`'s actual
+  world-space Transform position via normal SDK calls on the captured controller
+  instance (`ctrl:call("get_PointerEffect")` etc.) both before and after the call,
+  NOT raw argument decoding -- same discipline as the earlier `Stamp.set_Color`
+  hook (safer than guessing at parsing a value-type `via.vec3` argument out of raw
+  hook args). Syntax-checked clean, 42/200 top-level locals. **Untested -- next
+  step: use "Start 10s continuous capture NOW" while aiming with the sight/laser
+  weapon (ensures the burst-gated hook logging window is active), then read the log
+  for `LaserSightController.setPosition CALLED/RETURNED` lines -- does it fire at
+  all, and if so, does `PointerEffect`'s position change between before/after in a
+  way that correlates with camera direction or spine correction state?**
+
+- **2026-08-15_laser_dot_vfx_muzzle3_and_parent_chains** -- player ran the 10s
+  capture (spine off, ~36s window, confirmed genuinely active via normal `stage=`
+  logging throughout). `LaserSightController.setPosition` hook confirmed installed
+  but ZERO calls logged -- a third confirmed-dead hook (after the WeaponArm setter
+  and `Stamp.set_Color`). Reframed conclusion: `setPosition` is very likely a
+  ONE-TIME setup call (attach to a joint), not a per-frame recompute -- if so, the
+  dot's real position is just ordinary native skeletal parenting, with no
+  Lua-hookable per-frame logic involved at all. Two direct follow-ups added to
+  `re2_vr_laser_dot_probe.lua`, no more guessing:
+  1. `dump_laser_sight_controller()` now also walks `PointerEffect`/`Light`/`Line`'s
+     actual Transform parent chain (up to 8 levels, via `get_Parent()`), to see
+     exactly what each part is really attached to instead of assuming.
+  2. New `get_vfx_muzzle3_ground_truth()` reads the sight's own TRUE emission joint
+     (`SightEmitJointName = vfx_muzzle3`, found in the controller dump -- never
+     checked before, different from `vfx_muzzle1`/`vfx_muzzle2`) directly by name off
+     the weapon transform, logged every stage as `vfx3_fwd=`/`dev_deg_vfx3_vs_cam=`
+     so the same amplitude-ratio technique validated earlier this session can be
+     applied to it specifically.
+  Syntax-checked clean, 43/200 top-level locals. **Untested -- next step: re-run
+  dump_laser_sight_controller (auto-dump-on-aim checkbox) to see the parent chains,
+  AND re-run the spine on/off 10s-capture A/B to get vfx3_fwd amplitude ratios --
+  compare against the muzzle_fwd/wrist_fwd ratios already measured.**
+
+- **2026-08-15_laser_dot_parent_chain_robust_fix** -- two results from the player's
+  test. (1) `vfx_muzzle3` amplitude ratio analyzed: OFF yaw/pitch ratio ~0.10/0.07,
+  ON ~0.06/0.07 -- essentially IDENTICAL between phases, no dramatic coupling like
+  `tip` showed. Real negative result: argues AGAINST "the dot just follows
+  vfx_muzzle3 via native parenting" as the sole explanation, since that joint itself
+  doesn't show the head-coupling amplification the dot visibly does. (2) The new
+  parent-chain dump came back "no transform found" for every getter -- traced to
+  `dump_parent_chain` assuming a fixed obj->GameObject->Transform shape that doesn't
+  match what these getters actually return (e.g. `PointerEffect` may be a
+  `via.effect.EffectPlayer` component directly, not wrapped in a GameObject). Fixed
+  to log the RAW RETURNED TYPE first (real info regardless), then try 3 plausible
+  shapes in turn (component-with-GameObject, GameObject-with-Transform,
+  already-a-Transform) instead of assuming just one. Syntax-checked clean. **Untested
+  -- next step: player re-runs just the LaserSightController dump (Reset Scripts,
+  auto-dump checkbox, aim) to see the ACTUAL parent chain / returned types this
+  time.**
+
+- **2026-08-15_created_effect_container_dump** -- player re-ran the dump with the
+  fix. Clean, conclusive result: `get_Light`/`get_Line` both confirmed to return
+  real `via.GameObject`s with ORDINARY skeletal parent chains --
+  `Light <- LaserSight <- wp0200 <- pl0000` and `Line <- LaserSight <- wp0200 <-
+  pl0000` -- exactly the normal weapon-skeleton hierarchy, nothing unusual. Since
+  the gun mesh itself is part of this same `wp0200` chain and stays stable, this
+  means Light/Line -- and thus the beam and the sight housing -- would stay stable
+  too by the same logic. **`get_PointerEffect` returned `via.effect.script.
+  CreatedEffectContainer`** -- NOT a GameObject/Transform at all, confirming
+  PointerEffect is a wrapper for a dynamically-created VFX effect instance,
+  positioned by the effect system's own separate logic, not the transform
+  hierarchy Light/Line use. This is the clean structural confirmation the
+  investigation needed: the dot (PointerEffect) and the stable parts (Light/Line/
+  gun mesh) are definitively different mechanisms.
+
+  New diagnostic `dump_created_effect_container()` added: full field+method dump of
+  `CreatedEffectContainer`'s type hierarchy, unfiltered, same pattern as the
+  LaserSightController dump. Wired into the same auto-dump-on-aim checkbox (now
+  fires all three dumps together) plus its own manual button. Syntax-checked clean,
+  44/200 top-level locals. **Untested -- next step: player re-runs the auto-dump
+  (now fires all 3), read the log for `CreatedEffectContainer (PointerEffect)
+  dump:` -- look for any field/method that could be the effect's actual world
+  position/direction source.**
+
+- **2026-08-15_pointer_effect_position_polling** -- `CreatedEffectContainer` dump
+  came back with real, promising accessors: `get_effectPositions()` (a direct
+  method returning the effect's own live position data), `PositionHolders` (a
+  field), `getPositionForEPV`, `get_maxEffectPositionNum`. Rather than hook another
+  write event (three previous hooks -- WeaponArm setter, `Stamp.set_Color`,
+  `LaserSightController.setPosition` -- all confirmed dead), added
+  `get_pointer_effect_world_pos()` to `re2_vr_laser_dot_probe.lua`: POLLS
+  `get_effectPositions()` every logged frame (same pattern already used for `tip`),
+  sidestepping the need to catch a rare/one-time write entirely. Handles unknown
+  return shape defensively (tries `get_elements()` list-sugar first, falls back to
+  treating the result as a single vec3-like value). Wired into `log_stage` as
+  `pe_pos=` (raw world position) and `dev_deg_pe_vs_cam=` (direction from muzzle vs.
+  camera, same technique as `tip`/`vfx3`). Syntax-checked clean, 45/200 top-level
+  locals. **Untested -- next step: player re-runs the spine on/off 10s-capture A/B
+  (same as before) and this time analyze `pe_pos`'s own amplitude ratio vs. camera,
+  the most direct candidate for the dot's actual position source yet.**
+
+- **2026-08-15_effect_positions_shape_probe** -- player ran the A/B capture:
+  `pe_pos` came back `nil` for all 7,195 samples across both spine on/off phases --
+  neither of the two guessed return shapes for `get_effectPositions()` matched.
+  Rather than guess a third shape blind, added `dump_effect_positions_probe()`: a
+  proper one-shot diagnostic that logs whether the call itself returns nil, the
+  live type name of whatever it does return, whether `get_elements()`/
+  `get_Length()`/`get_Count()` succeed, a raw `tostring()` fallback, and also tries
+  `getPositionForEPV(0)` directly (a plausible single-item accessor seen in the
+  same class dump). Wired into the same auto-dump-on-aim checkbox (now fires all 4
+  dumps) plus its own manual button. Syntax-checked clean, 46/200 top-level locals.
+  **Untested -- next step: player re-runs the auto-dump-on-aim (all 4 now), read
+  the log for `effectPositions probe:` to see the real shape and pick the correct
+  accessor for the next iteration of `get_pointer_effect_world_pos()`.**
+
+- **2026-08-15_laser_dot_investigation_paused_roomscale_clue** -- fixed the
+  enumerator consumption (`positions live type` was
+  `<get_effectPositions>d__12`, a compiler-generated C# iterator state machine --
+  `MoveNext()`/`get_Current()` is the correct pattern, not `get_elements()`/
+  `get_Length()`/`get_Count()`, which never applied). Re-ran the full spine on/off
+  10s-capture A/B with the fix: `pe_pos` was `nil` for all 14,375 samples across the
+  entire window, both phases -- a real, consistent negative, not a bug this time.
+  Four leads now confirmed dead on `LaserSightController`/`CreatedEffectContainer`:
+  the WeaponArm setter, `setPosition`, `get_effectPositions`, and (separately)
+  `Light`/`Line` confirmed to be ordinary stable skeletal parenting, not the dot.
+  One field remains unchecked: `PositionHolders`.
+
+  Player chose to pause here and resume tomorrow, but gave a critical new
+  qualitative clue first (see [[re2_vr_laser_sight_drift_status]] for the full
+  quote): the "off" feeling specifically requires BOTH RG held (aiming) AND spine
+  correction on -- described as feeling "roomscale'y," like head movement is
+  coupled to PRESENCE itself, not just a misplaced UI/VFX element, and "like it
+  overwrites something that has been fine-tuned to feel right in VR." This may
+  reframe next session's priority from "find the dot's exact render source" to
+  "what does RG-hold do to the camera/view when spine correction is active" --
+  worth checking camera POSITION (not just aim direction) against spine on/off +
+  RG-held state before continuing the `CreatedEffectContainer` field hunt.
+
+  All diagnostic tooling from today's session remains live in
+  `reframework\autorun\` (`re2_vr_laser_dot_probe.lua`,
+  `re2_vr_hand_head_coupling_probe.lua`, `re2_vr_posture_spine_straighten_override.lua`'s
+  new globals), all syntax-checked and snapshotted throughout. Nothing needs
+  reverting to resume -- pick up either `PositionHolders` or the camera-position
+  idea above.
+
+- **2026-08-15_effect_positions_enumerator_fix** -- probe result was decisive:
+  `positions live type: via.effect.script.CreatedEffectContainer.<get_effectPositions>d__12`
+  -- the unmistakable signature of a compiler-generated C# ITERATOR STATE MACHINE
+  (a `yield return` method), not a list/array at all. Explains every prior failure
+  cleanly: `get_elements()`/`get_Length()`/`get_Count()` genuinely don't apply to a
+  raw enumerator. Fixed `get_pointer_effect_world_pos()` to use the standard C#
+  `IEnumerator` consumption pattern instead: call `MoveNext()`, then read
+  `get_Current()` if it returned true. Also extended `dump_effect_positions_probe()`
+  to verify this pattern explicitly, walking up to 16 entries (not just the first,
+  since `get_maxEffectPositionNum` implied multiple slots) and printing each
+  `Current` value plus a vec3-shape check. Syntax-checked clean, 46/200 top-level
+  locals. **Untested -- next step: player re-runs the auto-dump-on-aim once to
+  verify the enumerator walk produces real position data, then re-runs the spine
+  on/off 10s-capture A/B to get real `pe_pos` amplitude data for the first time.**
+- 2026-08-16_camera_position_probe -- new diagnostic: re2_vr_camera_position_probe.lua, compares rendered camera pose (sdk.get_primary_camera) vs raw vrmod HMD pose (vrmod:get_position/get_rotation(0)) every frame during a 10s capture, to test whether the banked torso-twist residual sway (footstep-synced, all joints ruled out) is camera-computation vs real head movement

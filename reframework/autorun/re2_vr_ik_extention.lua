@@ -37,7 +37,30 @@ local CFG = {
     auto_standing_height_openxr = true,
     auto_standing_height_grace_s = 3.0,
     auto_standing_height_frame_delay = 60,
+    -- 2026-08-15, EXPERIMENTAL, default OFF: get_fp_style_hand_world_pos()
+    -- re-rotates the controller's tracking-space offset by the camera's
+    -- LIVE yaw every frame -- confirmed live (see
+    -- re2_vr_hand_head_yaw_coupling_status.md memory) to visibly swing the
+    -- computed hand position when the player just turns their head, even
+    -- with the controller held perfectly still (12,356-frame capture,
+    -- 6,192 controller-motionless-frame-pairs, hand_pos still moved ~0.012
+    -- units per degree of yaw change). When true, the yaw used for that
+    -- rotation is captured ONCE (first successful resolution after script
+    -- load) and reused for the rest of the session, instead of being
+    -- re-read from the live camera every frame -- sidesteps needing to find
+    -- a genuine native "play-space-to-world" calibration API (vrmod:get_standing_origin()'s
+    -- w component was checked and ruled out -- confirmed fixed regardless of
+    -- head yaw, but its value (w=1.0, x/y/z small) looks like a standard
+    -- homogeneous-coordinate position marker, not a yaw angle). Default OFF
+    -- so existing behavior for all players is unchanged until this is
+    -- verified to actually fix the swing without breaking normal hand
+    -- tracking. Toggle via reframework/data/re2_vr/re2_vr_ik_extention.json,
+    -- no ImGui panel in this file. Reset Scripts to re-capture the cached
+    -- yaw fresh (e.g. after a physical reorientation/recenter).
+    fp_hand_use_cached_yaw = false,
 }
+
+local cached_fp_look_rot = nil
 
 -- OpenXR hand position offsets (first-person arm IK).
 local FP_HAND_POS_OFFSET = {
@@ -659,12 +682,24 @@ local function get_fp_style_hand_world_pos(hand)
     if not vec3_valid(ctrl_pos) then return nil end
 
     local offset = vec3_subtract(ctrl_pos, hmd_pos)
-    local look_rot = cam_rot:normalized()
-    local m = look_rot:to_mat4()
-    m[1].y = 0.0
-    m[2].y = 0.0
-    m[3].y = 0.0
-    look_rot = m:to_quat():normalized()
+    local look_rot
+    if CFG.fp_hand_use_cached_yaw then
+        if cached_fp_look_rot == nil then
+            local m0 = cam_rot:normalized():to_mat4()
+            m0[1].y = 0.0
+            m0[2].y = 0.0
+            m0[3].y = 0.0
+            cached_fp_look_rot = m0:to_quat():normalized()
+        end
+        look_rot = cached_fp_look_rot
+    else
+        look_rot = cam_rot:normalized()
+        local m = look_rot:to_mat4()
+        m[1].y = 0.0
+        m[2].y = 0.0
+        m[3].y = 0.0
+        look_rot = m:to_quat():normalized()
+    end
 
     local hand_offset = quat_rotate_vec3(look_rot, offset)
     local hand_pos = vec3_add(cam_pos, hand_offset)

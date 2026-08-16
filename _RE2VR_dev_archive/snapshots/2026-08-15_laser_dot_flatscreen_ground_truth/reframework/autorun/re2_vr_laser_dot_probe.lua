@@ -24,13 +24,14 @@
 --      original investigation's per-mechanism searches, and specifically
 --      includes METHODS this time, not just field names (mechanism 4 only
 --      searched component NAMES, not WeaponArm's own methods).
---   2. Live burst-logging of LaserSightTipPosition alongside this mod's OWN
---      accurate aim data (re2.crosshair_pos/last_shoot_pos/last_shoot_dir,
---      populated by re2_vr_crosshair.lua via a real raycast, already
---      confirmed correct) -- auto-triggered the instant aiming starts (same
---      technique as re2_vr_aim_alignment_probe.lua), so we get a direct,
---      frame-by-frame, quantitative picture of exactly how the broken
---      value diverges from the known-correct one.
+--   2. Live burst-logging of LaserSightTipPosition alongside a real ground-
+--      truth muzzle position/forward direction (resolved independently in
+--      this file, VR-gate-free -- see 2026-08-15 note below) and the
+--      resulting angular deviation in degrees -- auto-triggered the instant
+--      aiming starts (same technique as re2_vr_aim_alignment_probe.lua), so
+--      we get a direct, frame-by-frame, quantitative picture of exactly how
+--      the broken value diverges from the known-correct one, at 5 pipeline
+--      stages within the same frame.
 --   3. If a setter method for LaserSightTipPosition exists
 --      (set_LaserSightTipPosition/setLaserSightTipPosition), hooks it to
 --      log every call (and the field's value immediately after) -- never
@@ -50,6 +51,25 @@ end
 local re2 = require("utility/RE2")
 local NS = sdk.game_namespace
 
+-- 2026-08-15, resumed: player confirmed this drift IS visible on flat-screen
+-- (previously assumed VR-only), and re2_vr_crosshair.lua's own muzzle/
+-- crosshair correlation data (re2.crosshair_pos/last_shoot_pos/last_shoot_dir)
+-- turned out to be VR-gated -- every call site in that script bails early on
+-- `if not vrmod:is_hmd_active() then return end`, so those globals stayed
+-- nil for the whole capture regardless of whether a headset was even the
+-- issue. Rather than touch the shipped crosshair script (broader blast
+-- radius, its VR gate exists for real reasons elsewhere in that file), this
+-- probe now resolves its OWN ground-truth muzzle position/forward direction,
+-- copying re2_vr_crosshair.lua's update_muzzle_data() joint-resolution logic
+-- verbatim minus the VR gate (that logic itself was never VR-dependent, only
+-- its call site was). Read-only, no new hooks.
+local transform_get_joint_by_hash = sdk.find_type_definition("via.Transform"):get_method("getJointByHash")
+local gameobject_get_transform = sdk.find_type_definition("via.GameObject"):get_method("get_Transform")
+local joint_get_position = sdk.find_type_definition("via.Joint"):get_method("get_Position")
+local via_murmur_hash_calc32 = sdk.find_type_definition("via.murmur_hash"):get_method("calc32")
+local vfx_muzzle1_hash = via_murmur_hash_calc32:call(nil, "vfx_muzzle1")
+local vfx_muzzle2_hash = via_murmur_hash_calc32:call(nil, "vfx_muzzle2")
+
 local state = {
     survivor_condition_type = nil,
     setter_hook_installed = false,
@@ -58,6 +78,7 @@ local state = {
     was_aiming = false,
     burst_remaining = 0,
     frame = 0,
+    log_this_frame = false,
     last_dump = "No dump yet.",
 
     -- 2026-08-15 continued: set_LaserSightTipPosition confirmed hooked but
@@ -104,6 +125,75 @@ end
 local function fmt_vec(v)
     if not v then return "nil" end
     return string.format("(%.4f, %.4f, %.4f)", v.x, v.y, v.z)
+end
+
+-- VR-independent ground truth for "where the gun actually points" -- mirrors
+-- re2_vr_crosshair.lua's update_muzzle_data() joint resolution exactly, just
+-- without the vrmod:is_hmd_active() gate that only exists at THAT script's
+-- call site.
+local function get_muzzle_ground_truth()
+    if not re2.weapon then return nil, nil end
+    local param = safe(function() return re2.weapon:get_field("<FireBulletParam>k__BackingField") end)
+    if not param then return nil, nil end
+    local fire_type = safe(function() return param:get_field("_FireBulletType") end)
+    local is_camera_type = fire_type == 0
+
+    local muzzle_joint = nil
+    if not is_camera_type then
+        muzzle_joint = safe(function() return re2.weapon:get_field("<MuzzleJoint>k__BackingField") end)
+        if muzzle_joint then
+            muzzle_joint = safe(function() return muzzle_joint:get_field("_Parent") end)
+        end
+    end
+    if (not is_camera_type) and not muzzle_joint then
+        local weapon_go = safe(function() return re2.weapon:call("get_GameObject") end)
+        if weapon_go then
+            local transform = safe(function() return gameobject_get_transform(weapon_go) end)
+            if transform then
+                muzzle_joint = safe(function() return transform_get_joint_by_hash(transform, vfx_muzzle1_hash) end)
+                if not muzzle_joint then
+                    muzzle_joint = safe(function() return transform_get_joint_by_hash(transform, vfx_muzzle2_hash) end)
+                end
+            end
+        end
+    end
+
+    if muzzle_joint then
+        local pos = safe(function() return joint_get_position(muzzle_joint) end)
+        local fwd = safe(function() return muzzle_joint:call("get_AxisZ") end)
+        return pos, fwd
+    end
+
+    -- Camera-type fallback (matches re2_vr_crosshair.lua's own fallback).
+    local cam = safe(function() return sdk.get_primary_camera() end)
+    local mat = cam and safe(function() return cam:get_WorldMatrix() end)
+    if not mat then return nil, nil end
+    local pos = mat[3]
+    local fwd = safe(function() return (mat:to_quat() * Vector3f.new(0, 0, -1)):normalized() end)
+    return pos, fwd
+end
+
+local function vec3_sub(a, b)
+    return Vector3f.new(a.x - b.x, a.y - b.y, a.z - b.z)
+end
+
+local function vec3_len(v)
+    return math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+end
+
+local function vec3_dot(a, b)
+    return a.x * b.x + a.y * b.y + a.z * b.z
+end
+
+-- Angle (degrees) between two direction vectors -- the actual "how many
+-- degrees off" number, matching how this bug has always been described
+-- ("30-50 degrees off from actual aim").
+local function angle_between_deg(a, b)
+    local la, lb = vec3_len(a), vec3_len(b)
+    if la < 1e-6 or lb < 1e-6 then return nil end
+    local cosang = vec3_dot(a, b) / (la * lb)
+    cosang = math.max(-1.0, math.min(1.0, cosang))
+    return math.deg(math.acos(cosang))
 end
 
 -- Item 1: full WeaponArm hierarchy dump on demand.
@@ -242,17 +332,36 @@ local function try_install_stamp_hook()
     log.info("[laser_dot_probe] Hooked via.render.Stamp.set_Color")
 end
 
--- Item 2: correlated live burst logging -- the broken field side by side
--- with this mod's own known-accurate aim data.
-local function log_frame_correlation()
+-- Item 2 (2026-08-15, extended): correlated live burst logging -- the broken
+-- field side by side with this mod's own known-accurate aim data. Extended
+-- with the "next reasoned-but-untried step" from the pause point: log the
+-- field at SEVERAL stages WITHIN the same frame (same multi-stage technique
+-- as re2_vr_aim_alignment_probe.lua, which cracked the spine-timing question
+-- the same way) to find WHEN LaserSightTipPosition changes/snaps rather than
+-- only observing its value once per frame. The known behavior (from the
+-- prior capture) is a ~17-frame garbage-range period right as aiming starts,
+-- then a discontinuous jump to a regime that co-varies with real aim but
+-- offset -- the goal here is to see which pipeline stage the jump lands
+-- between.
+local function should_log()
+    return state.log_this_frame == true
+end
+
+local function log_stage(stage)
+    if not should_log() then return end
     local tip = re2.weapon and safe(function() return re2.weapon:get_field(TIP_FIELD) end)
+    local muzzle_pos, muzzle_fwd = get_muzzle_ground_truth()
+    local dev_deg = nil
+    if tip and muzzle_pos and muzzle_fwd then
+        dev_deg = angle_between_deg(vec3_sub(tip, muzzle_pos), muzzle_fwd)
+    end
     log.info(string.format(
-        "[laser_dot_probe] frame=%d tip=%s  crosshair_pos=%s  shoot_pos=%s  shoot_dir=%s",
-        state.frame,
+        "[laser_dot_probe] frame=%d stage=%-24s tip=%s  muzzle_pos=%s  muzzle_fwd=%s  dev_deg=%s",
+        state.frame, stage,
         fmt_vec(tip),
-        fmt_vec(re2.crosshair_pos),
-        fmt_vec(re2.last_shoot_pos),
-        fmt_vec(re2.last_shoot_dir)))
+        fmt_vec(muzzle_pos),
+        fmt_vec(muzzle_fwd),
+        dev_deg and string.format("%.2f", dev_deg) or "nil"))
 end
 
 local function check_auto_capture()
@@ -267,15 +376,41 @@ local function check_auto_capture()
     state.was_aiming = aiming
 end
 
+-- Decided ONCE per frame (at PRE LateUpdateBehavior, which also increments
+-- state.frame) so a burst of N means N full frames with every stage logged,
+-- not N individual log calls split across ~5 call sites per frame.
+local function begin_frame_log_decision()
+    if state.burst_remaining > 0 then
+        state.burst_remaining = state.burst_remaining - 1
+        state.log_this_frame = true
+        return
+    end
+    state.log_this_frame = false
+end
+
 re.on_pre_application_entry("LateUpdateBehavior", function()
     state.frame = state.frame + 1
     check_auto_capture()
     try_install_setter_hook()
     try_install_stamp_hook()
-    if state.burst_remaining > 0 then
-        state.burst_remaining = state.burst_remaining - 1
-        log_frame_correlation()
-    end
+    begin_frame_log_decision()
+    log_stage("PRE LateUpdateBehavior")
+end)
+
+re.on_application_entry("LateUpdateBehavior", function()
+    log_stage("POST LateUpdateBehavior")
+end)
+
+re.on_pre_application_entry("UpdateJointExpression", function()
+    log_stage("PRE UpdateJointExpression")
+end)
+
+re.on_application_entry("UpdateJointExpression", function()
+    log_stage("POST UpdateJointExpression")
+end)
+
+re.on_pre_application_entry("PrepareRendering", function()
+    log_stage("PRE PrepareRendering")
 end)
 
 re.on_draw_ui(function()
@@ -285,10 +420,17 @@ re.on_draw_ui(function()
     imgui.text("Read-only except one hook (logs only, never blocks/changes the call).")
     imgui.text("Logs to re2_framework_log.txt -- grep for [laser_dot_probe]")
     imgui.text("Currently aiming: " .. tostring(player_is_aiming()))
+    imgui.text_colored(
+        "This round: multi-stage same-frame capture (5 pipeline stages per frame) to find",
+        0xFF88CCFF)
+    imgui.text_colored(
+        "WHEN tip snaps from garbage range to its offset-but-tracking regime, not just THAT it does.",
+        0xFF88CCFF)
     imgui.text("Setter hook installed: " .. tostring(state.setter_hook_installed) ..
         (state.setter_method_name and (" (" .. state.setter_method_name .. ")") or " (not found yet -- equip/aim a weapon)") ..
-        " -- confirmed NEVER fires despite the field changing, per 2026-08-15 capture")
-    imgui.text("Stamp.set_Color hook installed: " .. tostring(state.stamp_hook_installed))
+        " -- confirmed dead, never fires (2026-08-15)")
+    imgui.text("Stamp.set_Color hook installed: " .. tostring(state.stamp_hook_installed) ..
+        " -- confirmed dead, never fires during aim burst (2026-08-15)")
 
     if imgui.button("Dump WeaponArm laser/sight fields+methods") then
         dump_weapon_arm()
@@ -306,7 +448,10 @@ re.on_draw_ui(function()
     end
     imgui.text("Burst remaining: " .. tostring(state.burst_remaining))
     imgui.text_colored(
-        "Best test: equip a sight/laser weapon, enable auto-capture, aim while looking around (esp. up/down) -- then check the log.",
+        "Confirmed 2026-08-15: reproduces flat-screen too (not VR-only) -- no headset needed to test.",
+        0xFF88CCFF)
+    imgui.text_colored(
+        "Best test: equip a sight/laser weapon, enable auto-capture, aim (with spine correction ON, Pre timing) -- then check the log for dev_deg=.",
         0xFF88CCFF)
 
     imgui.spacing()

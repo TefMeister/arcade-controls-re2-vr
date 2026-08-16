@@ -1,6 +1,6 @@
 {
     "default_crosshair_behavior": false,
-    "disable_crosshair": false,
+    "disable_crosshair": true,
     "disable_crosshair_firstperson": false,
     "only_show_for_sight_weapons": true,
     "sight_bit_index": 0

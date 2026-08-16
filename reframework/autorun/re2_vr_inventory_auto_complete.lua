@@ -331,11 +331,9 @@ local state = {
     -- confirmed unsafe for merges, keep it for the EMPTY-SLOT path only
     -- (untouched, different code path below, not implicated by this test).
     merge_call_combination_mode = true,
-    -- 2026-08-14: stress-test toggle (player's explicit request), bypasses
-    -- AUTO_PICKUP_ALLOWLIST entirely so every item type in the game routes
-    -- through the grant/merge logic, not just the curated consumables list
-    -- above. Off by default -- see do_grant_step's allowlist gate.
-    bypass_allowlist_all_items = false,
+    -- 2026-08-17: bypass_allowlist_all_items REMOVED (was a superseded
+    -- stress-test flag; the curated allowlist is near-complete and firearms
+    -- were confirmed to break under bypass).
     -- 2026-08-15: `force_new_item_look` (NIC) REMOVED ENTIRELY -- confirmed
     -- game-breaking (froze on merges, isolated via live testing with APU
     -- off/NIC alone on) and no longer needed now that merge detection and
@@ -582,21 +580,7 @@ local function do_grant_step()
     -- collision guess. FORCE_MANUAL_WEAPON_IDS table itself left in place
     -- below for reference/history, just no longer consulted here.
 
-    -- 2026-08-14: bypass toggle added at the player's explicit request, to
-    -- stress-test auto-complete against every item type in the game
-    -- (weapons/key items/documents included), not just the curated
-    -- consumables list above. Off by default -- the curated allowlist stays
-    -- the safe default; this is an opt-in test flag, same pattern as every
-    -- other experimental checkbox in this file.
-    local allowed_name
-    if state.bypass_allowlist_all_items then
-        allowed_name = (ok_gis_id and gis_item_id ~= nil and AUTO_PICKUP_ALLOWLIST[gis_item_id])
-            or subweapon_name
-            or (ok_gis_id and gis_item_id ~= nil and ("ItemId " .. tostring(gis_item_id) .. " (not in curated list, bypass active)"))
-            or nil
-    else
-        allowed_name = (ok_gis_id and gis_item_id ~= nil and AUTO_PICKUP_ALLOWLIST[gis_item_id]) or subweapon_name or nil
-    end
+    local allowed_name = (ok_gis_id and gis_item_id ~= nil and AUTO_PICKUP_ALLOWLIST[gis_item_id]) or subweapon_name or nil
     if not allowed_name then
         log_line(string.format(
             "grant step: ItemId=%s WeaponId=%s not on auto-pickup allowlist -- staying manual for this item",
@@ -1199,23 +1183,6 @@ re.on_draw_ui(function()
         if changed_m then
             state.merge_call_combination_mode = new_val_m
             log_line("Merge calls combinationItemGetItemMode = " .. tostring(new_val_m))
-        end
-
-        imgui.text_colored(
-            "SUPERSEDED (2026-08-14): the curated allowlist above is now a near-",
-            0xFFFF8800)
-        imgui.text_colored(
-            "complete item list. This bypasses it entirely -- includes firearms",
-            0xFFFF8800)
-        imgui.text_colored(
-            "too, which are confirmed to break (equip but can't aim). Leave off.",
-            0xFFFF8800)
-        local changed_bp, new_val_bp = imgui.checkbox(
-            "Bypass allowlist -- auto-pickup ALL items incl. firearms (DANGEROUS, superseded)",
-            state.bypass_allowlist_all_items)
-        if changed_bp then
-            state.bypass_allowlist_all_items = new_val_bp
-            log_line("Bypass allowlist (ALL items) = " .. tostring(new_val_bp))
         end
 
         imgui.spacing()

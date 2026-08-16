@@ -217,6 +217,15 @@ local function on_post_update_ik(retval)
     return retval
 end
 
+-- 2026-08-15, resumed: this originally hooked only get_method("updateIk"),
+-- which silently grabbed a single overload -- confirmed by a live capture to
+-- never actually fire (zero "IkArmFit.updateIk" log lines across a full
+-- 90-frame aim burst), unlike re2_vr_ik_extention.lua and re2_vr_recoil.lua,
+-- both of which successfully hook this method and both log "(2)" on install
+-- (2 overloads). Fixed to match re2_vr_ik_extention.lua's proven approach:
+-- iterate ALL methods named "updateIk" via get_methods() and hook every one,
+-- since get_method(name) alone isn't guaranteed to resolve the overload
+-- that's actually invoked at runtime.
 local function install_ik_hook()
     if state.ik_hook_installed then return end
     state.arm_fit_type = sdk.find_type_definition(NS("IkArmFit"))
@@ -227,17 +236,32 @@ local function install_ik_hook()
         end
         return
     end
-    local method = state.arm_fit_type:get_method("updateIk")
-    if not method then
+    local hooked = 0
+    local methods = state.arm_fit_type:get_methods()
+    if methods then
+        for _, method in ipairs(methods) do
+            if method and method:get_name() == "updateIk" then
+                sdk.hook(method, on_pre_update_ik, on_post_update_ik)
+                hooked = hooked + 1
+            end
+        end
+    end
+    if hooked == 0 then
+        local method = state.arm_fit_type:get_method("updateIk")
+        if method then
+            sdk.hook(method, on_pre_update_ik, on_post_update_ik)
+            hooked = 1
+        end
+    end
+    if hooked == 0 then
         if not state.ik_hook_warned then
             log.warn("[aim_align_probe] IkArmFit.updateIk not found")
             state.ik_hook_warned = true
         end
         return
     end
-    sdk.hook(method, on_pre_update_ik, on_post_update_ik)
     state.ik_hook_installed = true
-    log.info("[aim_align_probe] Hooked IkArmFit.updateIk")
+    log.info(string.format("[aim_align_probe] Hooked IkArmFit.updateIk (%d)", hooked))
 end
 
 install_ik_hook()

@@ -26,20 +26,15 @@ local cfg_path = "re2_vr/crosshair_config.json"
 
 local cfg = {
     default_crosshair_behavior = false,
-    disable_crosshair = false,
+    -- 2026-08-17: disable_crosshair now defaults TRUE (player request for
+    -- v1.5.0) -- with the red-dot/torso root fixes the mod crosshair is no
+    -- longer needed by default; flip the checkbox to bring it back.
+    disable_crosshair = true,
     disable_crosshair_firstperson = false,
-    -- 2026-08-15: only draw the crosshair while (a) the currently equipped
-    -- weapon has an optic/sight attachment on it and (b) the player is
-    -- actively aiming (RG held) -- for weapons with no sight attachment,
-    -- and whenever not aiming, the crosshair stays off. Meant to pair with
-    -- a broken/suppressed sight dot: use this as the reliable replacement
-    -- reticle only where the native one is actually broken, not everywhere.
-    only_show_for_sight_weapons = false,
-    -- Which bit of the weapon's real _WeaponParts represents "has a sight
-    -- attachment" -- confirmed as bit 2 for wp3000 (Lightning Hawk) in a
-    -- past investigation (see re2_vr_laser_sight_drift_status.md), NOT
-    -- verified for other weapons. Adjustable here rather than hardcoded.
-    sight_bit_index = 2,
+    -- 2026-08-17: the sight-gated crosshair feature (only_show_for_sight_weapons /
+    -- sight_bit_index, added 2026-08-15) was REMOVED -- it was built to pair
+    -- with the sight-suppression script, which is gone, and the underlying
+    -- red-dot drift got root-fixed (see re2_vr_laser_sight_drift_status.md).
 }
 
 local function load_cfg()
@@ -60,75 +55,6 @@ load_cfg()
 re.on_config_save(function()
     json.dump_file(cfg_path, cfg)
 end)
-
--- Sight-gated crosshair (2026-08-15, see cfg.only_show_for_sight_weapons
--- above). Same GameObject.get_component / getComponent(System.Type)
--- pattern already used throughout this mod, and the same
--- Equipment.get_MainWeapon()._WeaponParts bit-check already proven in
--- re2_vr_suppress_sight_attachment.lua -- read-only here, no forcing.
-local GameObject = require("utility/GameObject")
-local NS = sdk.game_namespace
-local survivor_condition_type = nil
-
-local function get_equipment()
-    local ok_p, player = pcall(function() return re2.get_localplayer() end)
-    if not ok_p or not player then return nil end
-    local ok_e, equipment = pcall(function()
-        return GameObject.get_component(player, NS("survivor.Equipment"))
-    end)
-    return ok_e and equipment or nil
-end
-
--- Returns the raw _WeaponParts int, or nil if unreadable (no weapon/arm,
--- field missing, etc.) -- exposed separately from the boolean check so the
--- UI can show the actual value for verifying/finding the right bit per
--- weapon (see re2_vr_laser_sight_drift_status.md -- JMB Hp3 showed no
--- correlation on bits 0-7, unlike the confirmed wp3000 bit 2).
-local function get_current_weapon_parts()
-    local equipment = get_equipment()
-    if not equipment then return nil end
-    local ok_arm, arm = pcall(function() return equipment:call("get_MainWeapon") end)
-    if not ok_arm or not arm then return nil end
-    local ok_wp, weapon_parts = pcall(function() return arm:get_field("_WeaponParts") end)
-    if not ok_wp or weapon_parts == nil then return nil end
-    return weapon_parts
-end
-
-local function current_weapon_has_sight()
-    local weapon_parts = get_current_weapon_parts()
-    if weapon_parts == nil then return false end
-    local bit = 1 << cfg.sight_bit_index
-    return (weapon_parts & bit) ~= 0
-end
-
-local function get_survivor_condition(player)
-    if not player then return nil end
-    if not survivor_condition_type then
-        survivor_condition_type = sdk.typeof(NS("survivor.SurvivorCondition"))
-    end
-    if not survivor_condition_type then return nil end
-    local ok, cond = pcall(function()
-        return player:call("getComponent(System.Type)", survivor_condition_type)
-    end)
-    return ok and cond or nil
-end
-
-local function player_is_aiming()
-    local ok_p, player = pcall(function() return re2.get_localplayer() end)
-    if not ok_p or not player then return false end
-    local cond = get_survivor_condition(player)
-    if not cond then return false end
-    local ok, aiming = pcall(function() return cond:call("get_IsHold") end)
-    return ok and aiming == true
-end
-
--- true = crosshair allowed to draw. When only_show_for_sight_weapons is
--- off (default), this is always true -- a pure no-op, existing behavior
--- unchanged.
-local function is_crosshair_enabled()
-    if not cfg.only_show_for_sight_weapons then return true end
-    return current_weapon_has_sight() and player_is_aiming()
-end
 
 local tdb_version = sdk.get_tdb_version()
 
@@ -312,29 +238,13 @@ re.on_draw_ui(function()
     changed, cfg.default_crosshair_behavior = imgui.checkbox("Default crosshair behavior", cfg.default_crosshair_behavior)
     changed, cfg.disable_crosshair = imgui.checkbox("Disable crosshair", cfg.disable_crosshair)
     changed, cfg.disable_crosshair_firstperson = imgui.checkbox("Disable crosshair (First Person only)", cfg.disable_crosshair_firstperson)
-
-    imgui.spacing()
-    changed, cfg.only_show_for_sight_weapons = imgui.checkbox(
-        "Only show crosshair for sight-equipped weapons while aiming", cfg.only_show_for_sight_weapons)
-    imgui.text_colored(
-        "Off by default. Weapons with no sight attachment never show the crosshair; sight-equipped weapons only show it while RG (aim) is held.",
-        0xFF88CCFF)
-    if cfg.only_show_for_sight_weapons then
-        changed, cfg.sight_bit_index = imgui.slider_int("Sight WeaponParts bit index", cfg.sight_bit_index, 0, 15)
-        local raw = get_current_weapon_parts()
-        imgui.text(string.format("Live WeaponParts: %s  (0x%s)",
-            raw and tostring(raw) or "unreadable", raw and string.format("%X", raw) or "?"))
-        imgui.text(string.format("Weapon has sight (bit %d): %s -- aiming: %s",
-            cfg.sight_bit_index, tostring(current_weapon_has_sight()), tostring(player_is_aiming())))
-    end
 end)
 
 re.on_application_entry("LockScene", function()
     if not vrmod:is_hmd_active() then return end
     local disable_crosshair = cfg.default_crosshair_behavior or
                               cfg.disable_crosshair or
-                              (firstpersonmod:will_be_used() and cfg.disable_crosshair_firstperson) or
-                              not is_crosshair_enabled()
+                              (firstpersonmod:will_be_used() and cfg.disable_crosshair_firstperson)
 
     if not disable_crosshair and (os.clock() - last_crosshair_time) < 1.0 then
         update_muzzle_data()
@@ -349,18 +259,20 @@ end)
 re.on_pre_gui_draw_element(function(element, context)
     if not vrmod:is_hmd_active() then return true end
 
-    local game_object = element:call("get_GameObject")
-    if game_object == nil then return true end
+    -- 2026-08-17: pcall-hardened -- during UI teardown (item box close,
+    -- scene transitions) get_GameObject on a dying element throws an
+    -- internal InvalidOperationException, which propagated as an on-screen
+    -- "sol: runtime error" (seen live 2026-08-17 00:45). Draw as normal on
+    -- any failure instead of erroring.
+    local ok_go, game_object = pcall(function() return element:call("get_GameObject") end)
+    if not ok_go or game_object == nil then return true end
 
-    local name = game_object:call("get_Name")
+    local ok_n, name = pcall(function() return game_object:call("get_Name") end)
+    if not ok_n or name == nil then return true end
 
     --log.info("drawing element: " .. name)
 
     if reticle_names[name] then
-        if not is_crosshair_enabled() then
-            return false
-        end
-
         if cfg.default_crosshair_behavior then
             return not cfg.disable_crosshair
         end
