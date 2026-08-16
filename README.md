@@ -39,8 +39,9 @@ counts.
 
 - **[praydog](https://github.com/praydog)** — [REFramework](https://github.com/praydog/REFramework),
   the mod-loading/scripting framework this entire mod runs on.
-- **Andyalpa** — the base REFramework VR conversion this mod builds on
-  top of. Used with Andyalpa's direct, explicit permission.
+- **Andyalpa** — creator of RE2VRMODRELOADED, the base VR conversion this
+  mod builds on top of (not the base REFramework VR conversion itself).
+  Used with Andyalpa's direct, explicit permission.
 - **alphaZomega** — [EMV-Engine](https://github.com/alphazolam/EMV-Engine),
   a REFramework Lua toolkit. A specific hook-timing technique from its
   live bone-posing tool was studied and reused (as a technique, not
