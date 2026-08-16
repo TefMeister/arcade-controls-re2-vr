@@ -1,18 +1,19 @@
 # Claire/Ada's torso visibly twisting ~40° in VR
 
-**Status:** The fix below works correctly at solving the problem it was built
-for — but has since been pulled from the parent mod (2026-08-07), because it
-turned out to cause two unrelated side effects elsewhere: it's the confirmed
-root cause of a separate VR aiming bug on one weapon attachment (see the
-companion laser-sight-drift case study — the fix's own spine correction is
-what displaces the attachment's aim point), and separately it breaks cutscene
-animations. Both were judged not worth the trade-off, so the parent mod ships
-without it again as of that version, back to the original twist behavior. The
-technique itself is left intact in a standalone package for anyone who wants
-it and can live with the side effects. Kept here specifically because the
-*technique* is still a correct, reusable answer to the original problem — the
-removal was about the wider consequences of using it in this specific mod,
-not the approach being wrong.
+**Status (updated 2026-08-16):** Back in the parent mod, both side effects
+resolved. The cutscene-animation breakage was solved with a gate that
+disables the correction while a cutscene is detected. The weapon-aim side
+effect (see the companion laser-sight-drift case study) turned out to share
+a root cause with this fix's own design: the native pose-solving method it
+needs to run before reads spine rotation multiple times within a single
+frame, not once, and the original version only wrote its correction once
+per frame — fixed by re-applying the correction before every one of those
+reads instead. Confirmed live in VR. A smaller, separate residual body-sway
+issue is still open (see that case study's later rounds) but the headline
+symptom — the weapon/aim displacement this fix originally caused — is
+resolved, not just avoided. The original 2026-08-07 removal note below is
+kept as written for the history; the technique was always correct, the gap
+was in how often the correction needed to be reapplied within a frame.
 
 ## The symptom
 

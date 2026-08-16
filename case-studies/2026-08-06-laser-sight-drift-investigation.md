@@ -1,16 +1,17 @@
 # Laser/red-dot sight beam drifting off aim, in VR only
 
-**Status:** Reopened, and paused mid-investigation (not abandoned) after a
-follow-up session found genuinely new ground via live method hooking — the
-exact technique the original closing note flagged as the one remaining
-serious avenue, never attempted until now. Sections through "Round seven"
-and "Where it actually landed" below are the original three-session
-investigation, left as written since the conclusions there still hold on
-their own terms. Everything from "Round eight" onward is a later session
-that picked it back up and found real new structure, plus a critical
-correction to the original framing (see below) — documented in full for
-the same reason as the first seventeen rounds: the reasoning behind a
-dead end, or a pause, is the actual value here.
+**Status:** FIXED, confirmed live in VR ("the dot is exactly where it has
+to be"). The root cause turned out to be a native method firing six times
+per frame while a related fix elsewhere in the project only wrote its
+correction once — see "Round ten" for the actual mechanism and how it was
+found. Sections through "Round seven" and "Where it actually landed" below
+are the original three-session investigation, left as written since the
+conclusions there still hold on their own terms — the dead ends really
+were dead ends. "Round eight" and "Round nine" found real new structure on
+an object that turned out not to be the cause, also left as written for
+the same reason. Documented in full because the reasoning behind a dead
+end — or, this time, a fix that took ten rounds and two case studies to
+find — is the actual value here.
 
 ## The symptom
 
@@ -552,3 +553,89 @@ would flatten.
   they describe ("only when both X and Y are true"), before turning it
   into a technical hypothesis — the exact phrasing often carries detail a
   paraphrase would lose.
+
+## Round ten: the fix was in a different investigation's untested tool
+
+The breakthrough, when it came, didn't come from continuing round nine's
+thread (`LaserSightController`, `CreatedEffectContainer`, the dynamic VFX
+wrapper). It came from a completely separate case study — the companion
+torso-twist investigation — and specifically from a diagnostic tool built
+there weeks earlier that had never actually produced real data.
+
+That tool hooked a native arm-IK method to watch what spine value it
+solved against. It had been sitting there, "confirmed installed," logging
+nothing, for a full prior session. The assumption at the time was that the
+hook simply never fired for some structural reason worth investigating
+later. The real cause was much smaller and much easier to miss: the
+install code only called the single-overload lookup function
+(`get_method(name)`), which silently resolves to just *one* of the
+method's overloads. This exact class had at least two. Two other scripts
+elsewhere in the same project successfully hooked the same method by
+iterating *every* method matching that name (`get_methods()`, then
+checking each one's name) — a pattern that had already been proven
+correct in this codebase, just never applied here. One-line-shaped fix,
+in the sense that it was small; finding it required specifically
+distrusting "the hook is installed, therefore the target genuinely never
+gets called" as a conclusion.
+
+The first real capture with the hook actually working delivered the
+answer immediately: the native method that solves arm/weapon pose fires
+**six times in a single frame**, not once. The fix elsewhere in this same
+project that corrects a twisted spine bone only ever wrote its correction
+**once per frame**, at the top of it. Within one frame, the first two of
+those six calls saw the corrected value; the remaining four saw the raw,
+still-animating original. Positions derived from those two groups
+differed by roughly half a unit — easily enough to explain a dot landing
+30-50° off target, and enough to explain the parallel case study's own
+"gun points left" symptom, since both were reading the same inconsistent
+mid-frame state.
+
+The actual fix: stop relying on a single per-frame write entirely. Hook
+the same native method the diagnostic was watching, and re-apply the
+correction immediately before *every* call, not just once at the top of
+the frame. Confirmed live, by the person actually in the headset: the dot
+sits exactly where it should.
+
+Two things worth naming separately about why this took as long as it did:
+
+1. **A hook that logs nothing can mean two very different things**: "this
+   code path genuinely never runs" or "my hook installation silently
+   failed to attach to the code path that runs." Only one of those is
+   informative about the game; the other is informative about the hook
+   code. Before trusting a zero-calls result as a real negative, confirm
+   the hook count matches what a *working* hook on the same method
+   elsewhere in the same codebase reports (here, "(2)" — the tell was
+   sitting in plain sight in two other files the whole time).
+2. **The right diagnostic can already exist in a sibling investigation.**
+   This project treats every bug as its own thread with its own tooling,
+   which is usually right — but the actual mechanism here (native
+   multi-call-per-frame IK solving) was a property of a *shared* system
+   two different visible symptoms both depended on. When two investigations
+   keep circling the same suspect system (here: arm-IK reading a
+   spine-correction script's output) without either fully explaining the
+   other's symptom, it's worth checking whether an *existing, unfinished*
+   diagnostic in the other thread — even one already written off as a dead
+   end — was actually just broken in a small, fixable way.
+
+## What this means for the rest of this case study
+
+Round nine's `LaserSightController`/`CreatedEffectContainer` exploration
+wasn't wrong to try — that object genuinely exists and genuinely renders
+something — but it turned out not to be where the bug lived. The dot was
+never miscalculating its own position relative to the gun; the *gun's own
+in-hand pose* was being solved against a stale, uncorrected value for most
+of a frame's IK work, and the dot (like everything else attached to the
+weapon) just faithfully followed wherever that already-wrong pose put it.
+All four dead ends on that object stand as correctly-executed, genuinely
+uninformative tests of a real system that simply wasn't the cause —
+exactly the kind of result worth keeping on record rather than erasing,
+per the lesson list above.
+
+**Status, finally: FIXED**, confirmed by direct observation in a real VR
+session, not just by an instrument agreeing with itself. The late,
+qualitative "room-scale presence" clue from round nine's pause point
+turned out to describe a real but *separate*, smaller residual issue
+(a subtle body sway, still being chased) — worth remembering that
+resolving the headline symptom doesn't automatically mean every
+qualitative report about the same feature was describing the same root
+cause.
