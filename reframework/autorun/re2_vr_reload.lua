@@ -1672,7 +1672,12 @@ local function init_reload_stack()
             get_left_hand_position = function() return reload_mag.get_left_hand_position() end,
             get_left_track_position = function() return reload_mag.get_left_track_position() end,
             get_left_track_pos_with_source = function() return reload_mag.get_left_track_pos_with_source() end,
-            get_vr_controller_world_pos = function() return reload_mag.get_vr_controller_world_pos() end,
+            -- Must forward the hand arg: ext_1's export defaults nil to
+            -- "left", so a no-arg wrapper here silently serves the LEFT
+            -- controller for BOTH hands of ext_2's relative-hands gesture.
+            get_vr_controller_world_pos = function(hand)
+                return reload_mag.get_vr_controller_world_pos(hand)
+            end,
             is_left_grip_pressed = function() return reload_mag.is_left_grip_pressed() end,
             is_left_trigger_pressed = function()
                 return reload_mag and reload_mag.is_left_trigger_pressed

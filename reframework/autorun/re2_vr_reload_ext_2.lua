@@ -1222,7 +1222,9 @@ function M.init(deps)
         local ctrl_world = quat_rotate_vec3(cam.rotation, rel)
         if not ctrl_world then return raw, raw_src end
         ctrl_world = vec3_add(cam.position, ctrl_world)
-        return ctrl_world, "game_world"
+        -- Tag carries the raw source through (e.g. "vrmod_raw>gw") so the
+        -- motion-gesture logs show WHICH provider actually served the pos.
+        return ctrl_world, (raw_src or "raw") .. ">gw"
     end
 
     local function get_hmd_openxr_pos()
@@ -3249,8 +3251,8 @@ function M.init(deps)
             return nil
         end
 
-        local lp = get_controller_game_world_pos("left")
-        local rp = get_controller_game_world_pos("right")
+        local lp, lsrc = get_controller_game_world_pos("left")
+        local rp, rsrc = get_controller_game_world_pos("right")
         if not lp or not rp then
             g.mo_status = lp and "no RIGHT controller pos" or "no LEFT controller pos"
             if g.mo_log_last == nil or (os.clock() - g.mo_log_last) > 0.25 then
@@ -3268,6 +3270,53 @@ function M.init(deps)
         -- both hands makes the relative pull identically zero -- flag it
         -- loudly instead of silently measuring nothing.
         local hx, hy, hz = lp.x - rp.x, lp.y - rp.y, lp.z - rp.z
+        -- Source X-ray, every 2s while the gesture polls: every candidate
+        -- controller provider's values side by side, so ONE live test says
+        -- which provider is lying (identical L/R, frozen, zero, etc.)
+        -- instead of another blind reorder of the fallback chain.
+        if g.mo_dump_last == nil or (os.clock() - g.mo_dump_last) > 2.0 then
+            g.mo_dump_last = os.clock()
+            local parts = {}
+            pcall(function()
+                local cs = vrmod and vrmod:get_controllers()
+                if cs then
+                    for i, c in ipairs(cs) do
+                        local p = vrmod:get_position(c)
+                        parts[#parts + 1] = string.format(
+                            "vm[%d]=idx%s(%.3f,%.3f,%.3f)", i, tostring(c),
+                            p and p.x or -99, p and p.y or -99, p and p.z or -99)
+                    end
+                end
+            end)
+            pcall(function()
+                local mgr = sdk.get_managed_singleton("via.VRControllerManager")
+                local list = mgr and mgr.controllers_list
+                for i = 1, 2 do
+                    local e = list and list[i]
+                    local p = e and e.position
+                    if p then
+                        parts[#parts + 1] = string.format(
+                            "sg[%d]=(%.3f,%.3f,%.3f)", i, p.x, p.y, p.z)
+                    end
+                end
+            end)
+            pcall(function()
+                if get_vr_controller_world_pos then
+                    local dl = get_vr_controller_world_pos("left")
+                    local dr = get_vr_controller_world_pos("right")
+                    if dl then parts[#parts + 1] = string.format(
+                        "dp[L]=(%.3f,%.3f,%.3f)", dl.x, dl.y, dl.z) end
+                    if dr then parts[#parts + 1] = string.format(
+                        "dp[R]=(%.3f,%.3f,%.3f)", dr.x, dr.y, dr.z) end
+                end
+            end)
+            log.info(string.format(
+                "[motion_gesture] DUMP wp=%s L=%s R=%s lp=(%.3f,%.3f,%.3f) rp=(%.3f,%.3f,%.3f) dlen=%.4f %s",
+                tostring(wp_name), tostring(lsrc), tostring(rsrc),
+                lp.x, lp.y, lp.z, rp.x, rp.y, rp.z,
+                math.sqrt(hx * hx + hy * hy + hz * hz),
+                table.concat(parts, " ")))
+        end
         if (hx * hx + hy * hy + hz * hz) < 1e-6 then
             g.mo_status = "hands read IDENTICAL (bad controller source)"
             if g.mo_log_last == nil or (os.clock() - g.mo_log_last) > 0.25 then
@@ -3287,8 +3336,9 @@ function M.init(deps)
             g.mo_init = true
             g.mo_status = "armed"
             log.info(string.format(
-                "[motion_gesture] ARMED wp=%s axis_src=%s sign=%.0f dir=(%.2f,%.2f,%.2f) base_s=%.4f",
-                tostring(wp_name), axis_src, s_sign, ax, ay, az, s))
+                "[motion_gesture] ARMED wp=%s axis_src=%s sign=%.0f dir=(%.2f,%.2f,%.2f) base_s=%.4f L=%s R=%s",
+                tostring(wp_name), axis_src, s_sign, ax, ay, az, s,
+                tostring(lsrc), tostring(rsrc)))
             return 0.0
         end
         g.mo_status = "armed"
@@ -3314,8 +3364,10 @@ function M.init(deps)
         if g.mo_log_last == nil or (os.clock() - g.mo_log_last) > 0.25 then
             g.mo_log_last = os.clock()
             log.info(string.format(
-                "[motion_gesture] wp=%s src=%s pull_m=%.4f span=%.3f ratio=%.2f s=%.4f base=%.4f",
-                tostring(wp_name), axis_src, pull_m, span, ratio, s, g.mo_base_s))
+                "[motion_gesture] wp=%s src=%s pull_m=%.4f span=%.3f ratio=%.2f s=%.4f base=%.4f dlen=%.3f L=%s R=%s",
+                tostring(wp_name), axis_src, pull_m, span, ratio, s, g.mo_base_s,
+                math.sqrt(hx * hx + hy * hy + hz * hz),
+                tostring(lsrc), tostring(rsrc)))
         end
         return ratio
     end
