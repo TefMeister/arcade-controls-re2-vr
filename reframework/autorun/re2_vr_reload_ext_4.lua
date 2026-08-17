@@ -1200,7 +1200,19 @@ local function update_manual_pump_gesture()
             -- sign-locking that prevents the original mod's inverted
             -- front-to-back pump readings.
             local mo = nil
-            if not gesture.mo_hold_off
+            -- Motion drives GAME-REQUIRED pumps only (needs_pump /
+            -- pump_is_real -- true from the shot until the cycle
+            -- completes). Free/cosmetic racking stays LT-only: a motion
+            -- baseline armed during ordinary two-handed aiming turns hand
+            -- drift into phantom pulls -- live log 2026-08-18 00:34 shows
+            -- ratio pinned 0.75-1.00 for six straight seconds while just
+            -- holding the gun (needs_pump armed, fire blocked, dock
+            -- yanking the arm pose). mo_hold_off stays as an extra guard
+            -- for the post-completion tick. Set motion_cosmetic_pump
+            -- true in the manual_pump config to opt back in.
+            if (gesture.needs_pump or gesture.pump_is_real
+                    or mp_cfg().motion_cosmetic_pump == true)
+                and not gesture.mo_hold_off
                 and mp_cfg().motion_pump_enabled ~= false
                 and slide_gesture and slide_gesture.gesture_motion_ratio then
                 mo = slide_gesture.gesture_motion_ratio(gesture, wp, pump_gesture_ctx(),

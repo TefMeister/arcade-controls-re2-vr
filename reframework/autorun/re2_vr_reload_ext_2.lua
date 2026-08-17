@@ -2014,6 +2014,17 @@ function M.init(deps)
 
         local grip = is_left_grip_pressed()
         if not grip then
+            -- Latched pull: detach the hand visual the INSTANT the grip
+            -- reads released -- ahead of the debounce, zero latency. Same
+            -- cure the LT path already got (hand off at trigger-release
+            -- edge, not at cycle end): without it the hand visibly rides
+            -- the slide home after letting go (player-reported for LG
+            -- release, live 2026-08-18). A spurious one-frame grip blip at
+            -- full pull costs only the hand visual, nothing mechanical.
+            if rack.pull_done and not rack.hand_released_early then
+                rack.hand_released_early = true
+                snap_hand_dock_off()
+            end
             local now = os.clock()
             if not rack.grip_release_at then
                 rack.grip_release_at = now
@@ -2025,42 +2036,38 @@ function M.init(deps)
                 -- changes entirely and wait for the next frame's read.
                 return
             end
-            -- Pull already latched: a debounced grip release IS the
-            -- deliberate "drop the slide" gesture -- finish the cycle
-            -- (slide snaps home), the same finish-on-release the
-            -- tracked-hand path does. The player holds the slide back as
-            -- long as LG is held and drops it by releasing (requested
-            -- live 2026-08-18). Checked BEFORE the in-range anti-tremor
-            -- hold below: while holding the slide the hand is always in
-            -- range, so that 3s hold would lag the snap absurdly -- it
-            -- exists to protect mid-pull grabs from grip-sensor noise,
-            -- not a completed pull from its own release.
-            if should_finish_rack_on_release(wp) then
+            if not should_finish_rack_on_release(wp) then
+                if rack.in_range and held_false_for < rack.grip_release_hard_cap_sec then
+                    -- Past the debounce but the hand hasn't moved off the
+                    -- dock -- still more likely tremor/locomotion noise on
+                    -- the grip sensor than a real release. Keep waiting.
+                    return
+                end
+                -- Grip genuinely let go early, before the pull latched:
+                -- abort back to parked, same as letting go of the pump
+                -- handle early.
                 rack.grip_release_at = nil
-                complete_rack_cycle(wp)
+                rack.active = false
+                rack.armed = true
+                rack.trig_travel = 0.0
+                rack.trig_committed = false
+                rack.trigger_prev = false
+                reset_gesture_pull_state()
+                M.on_rack_released()
+                publish_rack_globals()
                 return
             end
-            if rack.in_range and held_false_for < rack.grip_release_hard_cap_sec then
-                -- Past the debounce but the hand hasn't moved off the dock --
-                -- still more likely tremor/locomotion noise on the grip
-                -- sensor than a real release. Keep waiting.
-                return
-            end
-            -- Grip genuinely let go early, before the pull latched: abort
-            -- back to parked, same as letting go of the pump handle early.
+            -- Latched pull, grip released (debounced): FALL THROUGH with
+            -- grip off. The motion drive below is grip-gated, so nothing
+            -- holds the travel up anymore -- it decays at spring speed to
+            -- the standard completion branch, the same animated return the
+            -- LT path has, just with the hand already detached above.
+            -- (Checked BEFORE the in-range anti-tremor hold: while holding
+            -- the slide the hand is by definition in range, so that 3s
+            -- hold would lag the release absurdly.)
+        else
             rack.grip_release_at = nil
-            rack.active = false
-            rack.armed = true
-            rack.trig_travel = 0.0
-            rack.trig_committed = false
-            rack.trigger_prev = false
-            rack.grip_release_at = nil
-            reset_gesture_pull_state()
-            M.on_rack_released()
-            publish_rack_globals()
-            return
         end
-        rack.grip_release_at = nil
 
         local bp = get_slide_bind_pose(wp)
         local trig = is_left_trigger_pressed()
@@ -2112,7 +2119,9 @@ function M.init(deps)
         -- completion check fires once both are home.
         local mo = nil
         local sd_cfg = CFG.slide_dock or {}
-        if sd_cfg.motion_rack_enabled ~= false then
+        -- grip-gated: you cannot hold a slide you are not gripping. This
+        -- is also what lets the LG-release fall-through above spring home.
+        if grip and sd_cfg.motion_rack_enabled ~= false then
             mo = M.gesture_motion_ratio(rack, wp, {
                 axis_mode = "dock",
                 get_joint = get_slide_joint,
