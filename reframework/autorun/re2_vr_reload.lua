@@ -3307,6 +3307,21 @@ local function draw_reload_ui()
                 CFG.slide_dock.motion_pull_scale = mrv
                 save_cfg()
             end
+            -- Live testing readout: shows whether the motion drive is
+            -- actually seeing the hands during an active slide grab.
+            local rk = reload_slide and reload_slide.get_rack and reload_slide.get_rack()
+            if rk then
+                if rk.active then
+                    imgui.text_colored(string.format(
+                        "Motion rack: grab active, baseline %s, pull %.0f%%",
+                        rk.mo_init and "set" or "NOT SET",
+                        (tonumber(rk.mo_ratio) or 0.0) * 100.0), UI_ACCENT)
+                else
+                    imgui.text_colored(
+                        "Motion rack: waiting for slide grab (LG on slide during a rack-needed reload)",
+                        UI_MUTED)
+                end
+            end
         end
     end
 
@@ -3323,6 +3338,21 @@ local function draw_reload_ui()
                 CFG.manual_pump = CFG.manual_pump or {}
                 CFG.manual_pump.motion_pull_scale = mpv
                 save_cfg()
+            end
+            -- Live testing readout, same as the rack one above.
+            local pump_mod = rawget(_G, "__vr_reload_pump")
+            local pg = pump_mod and pump_mod.get_gesture and pump_mod.get_gesture()
+            if pg then
+                if pg.active then
+                    imgui.text_colored(string.format(
+                        "Motion pump: grip active, baseline %s, pull %.0f%%",
+                        pg.mo_init and "set" or "NOT SET",
+                        (tonumber(pg.mo_ratio) or 0.0) * 100.0), UI_ACCENT)
+                else
+                    imgui.text_colored(
+                        "Motion pump: waiting for forend grip (hold LG)",
+                        UI_MUTED)
+                end
             end
         end
     end

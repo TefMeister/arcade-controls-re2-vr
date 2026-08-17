@@ -1301,6 +1301,10 @@ function Pump.init_module(deps)
     rawset(_G, "__vr_reload_pump", Pump)
 end
 
+function Pump.get_gesture()
+    return gesture
+end
+
 function Pump.needs_pump()
     return gesture.needs_pump == true
 end
