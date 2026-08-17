@@ -1110,9 +1110,20 @@ function M.init(deps)
         if not wm or not wm[3] or type(wm[3].x) ~= "number" then return nil end
         local rot = rawget(_G, "__vr_camera_stored_rot")
         if not rot then
+            -- get_GameObject on the camera throws internally while menus
+            -- (item box etc.) have it in a transitional state; sc()
+            -- swallows the Lua error but REFramework logs each throw --
+            -- polled every motion tick that produced a 300+/sec on-screen
+            -- error storm. Back off after a failure instead of retrying
+            -- every call.
+            local now_t = os.clock()
+            if rack.cam_go_fail_until and now_t < rack.cam_go_fail_until then
+                return nil
+            end
             local go = sc(cam, "get_GameObject")
             local tf = go and sc(go, "get_Transform")
             rot = tf and sc(tf, "get_Rotation")
+            if not rot then rack.cam_go_fail_until = now_t + 0.5 end
         end
         if not rot then return nil end
         return {
@@ -1151,10 +1162,16 @@ function M.init(deps)
         if vrc_manager then
             local ok_has, has = pcall(function() return vrc_manager:call("has_controllers") end)
             if ok_has and has then
-                local list = nil
-                pcall(function() list = vrc_manager.controllers_list end)
-                if list and list[li] and type(list[li].position) == "table" and type(list[li].position.x) == "number" then
-                    local p = list[li].position
+                local p = nil
+                -- position may be a table OR userdata depending on the
+                -- REFramework build -- the old type(...)=="table" guard
+                -- silently skipped this branch entirely on userdata.
+                pcall(function()
+                    local list = vrc_manager.controllers_list
+                    local entry = list and list[li]
+                    p = entry and entry.position
+                end)
+                if p and type(p.x) == "number" then
                     return Vector3f.new(p.x, p.y, p.z), "vrc_list"
                 end
             end
@@ -2074,7 +2091,7 @@ function M.init(deps)
                 axis_mode = "dock",
                 get_joint = get_slide_joint,
                 get_anchor_kind = function() return rack.anchor_kind or "xform" end,
-            }, tonumber(sd_cfg.motion_pull_scale) or 1.0,
+            }, tonumber(sd_cfg.motion_pull_scale) or 2.0,
                 tonumber(sd_cfg.motion_deadzone_m) or 0.012)
             if mo and mo > rack.trig_travel then rack.trig_travel = mo end
         end

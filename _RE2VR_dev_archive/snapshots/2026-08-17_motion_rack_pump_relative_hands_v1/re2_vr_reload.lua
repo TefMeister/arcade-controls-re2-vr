@@ -3301,7 +3301,7 @@ local function draw_reload_ui()
             end)
         if (CFG.slide_dock or {}).motion_rack_enabled ~= false then
             local mrc, mrv = imgui.slider_float("Motion rack pull scale##motion_rack_scale",
-                tonumber((CFG.slide_dock or {}).motion_pull_scale) or 1.0, 0.3, 3.0, "%.2f")
+                tonumber((CFG.slide_dock or {}).motion_pull_scale) or 2.0, 0.3, 3.0, "%.2f")
             if mrc then
                 CFG.slide_dock = CFG.slide_dock or {}
                 CFG.slide_dock.motion_pull_scale = mrv

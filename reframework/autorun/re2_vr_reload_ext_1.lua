@@ -4104,7 +4104,13 @@ end
         return get_track_pos_for_rack()
     end
     M.get_left_track_pos_with_source = get_track_pos_for_rack
-    M.get_vr_controller_world_pos = function() return get_vr_controller_world_pos("left") end
+    -- Pass the hand through (default left, preserving every existing
+    -- no-arg caller): the old hardcoded "left" made ext_2's motion-rack
+    -- right-controller read silently return the LEFT controller, so the
+    -- relative-hands pull measured (L - L) = an exact constant zero.
+    M.get_vr_controller_world_pos = function(hand)
+        return get_vr_controller_world_pos(hand == "right" and "right" or "left")
+    end
     M.is_left_grip_pressed = function() return is_left_grip_pressed() end
     M.is_left_trigger_pressed = function() return is_left_trigger_pressed() end
     M.haptic_pulse = haptic_pulse
