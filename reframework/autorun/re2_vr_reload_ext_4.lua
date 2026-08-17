@@ -104,6 +104,14 @@ local gesture = {
     await_pump_on_insert = false,
     pump_shot_in_flight = false,
     pump_await_grip_release = false,
+    -- Motion-pump lockout: set when a pump cycle completes, cleared by a
+    -- fresh grip press or a real (game-required) pump arming. Without it
+    -- the cosmetic gesture that auto-reactivates right after completion
+    -- (grip still held) captures a rest-posture motion baseline, and
+    -- ordinary aiming-hand drift then reads as a phantom full pull that
+    -- arms needs_pump and blocks firing (seen live 2026-08-17: s drifted
+    -- +14cm to ratio 1.00 within 1.3s of a completed cycle).
+    mo_hold_off = false,
     -- Left trigger hold/release state for the trigger-driven pump cycle.
     trigger_prev = false,
     -- 0.0 = parked/rest, 1.0 = fully pulled back. Ticked over real time
@@ -747,6 +755,8 @@ end
 local function arm_pump_gesture(wp)
     if not wp then return end
     gesture.needs_pump = true
+    -- Real pump required: motion drive is always allowed for it.
+    gesture.mo_hold_off = false
     gesture.cached_wp = wp
     local bp = get_pump_bind_pose(wp)
     if bp then
@@ -758,6 +768,7 @@ end
 
 local function clear_manual_pump_state()
     gesture.needs_pump = false
+    gesture.mo_hold_off = false
     gesture.pump_is_real = false
     gesture.pump_shot_in_flight = false
     gesture.pump_await_grip_release = false
@@ -803,6 +814,10 @@ local function complete_pump_cycle(wp_name)
     local bp = get_pump_bind_pose(wp_name)
     set_pump_joint_local_z(bp.rest_z, bp)
     clear_manual_pump_state()
+    -- AFTER the clear (which resets it false): motion drive stays cold
+    -- until the player deliberately re-grips or a real shot re-arms the
+    -- pump -- see the mo_hold_off comment in the gesture table.
+    gesture.mo_hold_off = true
     gesture.await_pump_on_insert = false
     if get_weapon_chamber_bullet_count then
         gesture.prev_loaded = get_weapon_chamber_bullet_count()
@@ -1092,6 +1107,12 @@ local function update_manual_pump_gesture()
     if grip then
         if not gesture.active then
             if not gesture.pump_await_grip_release then
+                -- A FRESH grip press (edge, not the continued hold that
+                -- auto-reactivates right after a completed cycle) is a
+                -- deliberate re-grab: re-enable the motion drive.
+                if not gesture.last_grip then
+                    gesture.mo_hold_off = false
+                end
                 gesture.pump_is_real = gesture.needs_pump == true
                 if not gesture.needs_pump then
                     -- Free/cosmetic grip: prime the bind pose/pull-axis
@@ -1173,7 +1194,8 @@ local function update_manual_pump_gesture()
             -- sign-locking that prevents the original mod's inverted
             -- front-to-back pump readings.
             local mo = nil
-            if mp_cfg().motion_pump_enabled ~= false
+            if not gesture.mo_hold_off
+                and mp_cfg().motion_pump_enabled ~= false
                 and slide_gesture and slide_gesture.gesture_motion_ratio then
                 mo = slide_gesture.gesture_motion_ratio(gesture, wp, pump_gesture_ctx(),
                     tonumber(mp_cfg().motion_pull_scale) or 1.0,

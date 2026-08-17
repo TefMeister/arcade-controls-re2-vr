@@ -2103,7 +2103,15 @@ function M.init(deps)
                 get_anchor_kind = function() return rack.anchor_kind or "xform" end,
             }, tonumber(sd_cfg.motion_pull_scale) or 2.0,
                 tonumber(sd_cfg.motion_deadzone_m) or 0.012)
-            if mo and mo > rack.trig_travel then rack.trig_travel = mo end
+            -- Motion drives the PULL phase only. Once the pull has latched
+            -- (pull_done), the slide is a free recoil spring: letting the
+            -- still-pulled hands keep holding travel up forced the player
+            -- to physically push forward before the rack would complete
+            -- (reported live 2026-08-17) -- a slide snaps home on its own
+            -- the instant the pull limit is reached, no return stroke.
+            if mo and not rack.pull_done and mo > rack.trig_travel then
+                rack.trig_travel = mo
+            end
         end
 
         local eased = trig_rack_ease.smoothstep01(rack.trig_travel)
@@ -2163,6 +2171,14 @@ function M.init(deps)
             and (rack.trig_committed or (mo ~= nil and mo >= 1.0 - 1e-4))
             and rack.trig_travel >= 1.0 - 1e-4 then
             notify_pull_limit_reached(wp, get_effective_pull_dist(wp))
+            -- Motion-committed rack (no LT involved): detach the visual
+            -- hand right now, same early-detach the LT path does on
+            -- trigger release -- the slide springs forward alone while
+            -- the real hand stays wherever it is.
+            if not rack.trig_committed and not rack.hand_released_early then
+                rack.hand_released_early = true
+                snap_hand_dock_off()
+            end
         elseif rack.pull_done and not trig and rack.trig_travel <= 1e-4 then
             complete_rack_cycle(wp)
         end
