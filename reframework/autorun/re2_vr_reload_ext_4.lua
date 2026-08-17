@@ -733,6 +733,7 @@ local function clear_gesture_pull_state()
     -- Motion-pump (relative-hands) state, see ext_2's M.gesture_motion_ratio.
     gesture.mo_init = false
     gesture.mo_ratio = 0.0
+    gesture.mo_status = nil
     gesture.pull_done = false
     gesture.pull_dir_locked = false
     gesture.pull_ax = nil

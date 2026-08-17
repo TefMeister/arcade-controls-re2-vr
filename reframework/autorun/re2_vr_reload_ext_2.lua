@@ -1746,6 +1746,7 @@ function M.init(deps)
         -- Motion-rack (relative-hands) state, see M.gesture_motion_ratio.
         rack.mo_init = false
         rack.mo_ratio = 0.0
+        rack.mo_status = nil
         reset_pull_smoothing()
         clear_pull_globals()
     end
@@ -3140,59 +3141,81 @@ function M.init(deps)
     -- racking (the hand is glued to the slide there: reading it back
     -- would measure our own output, not the player's input).
     function M.gesture_motion_ratio(g, wp_name, ctx, scale, deadzone)
-        if not g.mo_init then
-            local span, ax, ay, az
-            if ctx.axis_mode == "joint" then
-                local sj = ctx.get_joint and ctx.get_joint()
-                local kind = (ctx.get_anchor_kind and ctx.get_anchor_kind()) or "joint"
-                local bp = wp_name and get_slide_bind_pose(wp_name) or nil
-                if sj and bp then
-                    span, ax, ay, az = sample_joint_bind_span(sj, kind, bp)
-                end
+        -- Pull direction is derived WITHOUT moving the joint: earlier
+        -- versions sampled the parked/back world poses (write local_z,
+        -- read world matrix back), but the engine serves a STALE cached
+        -- world matrix for a joint written the same frame (documented at
+        -- update_slide_rack_trigger's publish_visual block) -- the sample
+        -- reads a zero span and the whole drive silently never arms.
+        -- Instead: the joint's LIVE travel axis in world (a plain read,
+        -- always fresh enough for a direction) times the LOCAL sign of
+        -- back_z - parked_z from the bind pose. That sign is per-weapon
+        -- ground truth for which way along the axis "racked back" lies --
+        -- no guessed convention, no sampling.
+        local bp = wp_name and get_slide_bind_pose(wp_name) or nil
+        if not bp then
+            g.mo_status = "no bind pose"
+            return g.mo_init and (g.mo_ratio or 0.0) or nil
+        end
+        local s_sign = (((tonumber(bp.back_z) or 0.0)
+            - (tonumber(bp.parked_z) or 0.0)) >= 0.0) and 1.0 or -1.0
+
+        local sj = ctx.get_joint and ctx.get_joint()
+        local kind = (ctx.get_anchor_kind and ctx.get_anchor_kind()) or "joint"
+        local ax, ay, az
+        if sj then
+            local wm = read_anchor_world_matrix(sj, kind)
+            if bp.travel_axis == "y" then
+                ax, ay, az = axis_y_from_world_matrix(wm)
             else
-                span, ax, ay, az = sample_slide_bind_span(wp_name)
+                ax, ay, az = axis_z_from_world_matrix(wm)
             end
-            if not ax and g.pull_axis_set and g.pull_ax then
-                -- Span sample unavailable this tick (joint not resolved
-                -- yet): fall back to the axis prepare already captured,
-                -- which is also bind-span-derived when it could be.
-                ax, ay, az = g.pull_ax, g.pull_ay, g.pull_az
-                span = nil
+            if not ax then
+                local fwd = read_anchor_axis(sj, kind,
+                    bp.travel_axis == "y" and "AxisY" or "AxisZ")
+                if fwd then
+                    local len = math.sqrt(fwd.x * fwd.x + fwd.y * fwd.y + fwd.z * fwd.z)
+                    if len > 1e-6 then
+                        ax, ay, az = fwd.x / len, fwd.y / len, fwd.z / len
+                    end
+                end
             end
-            if not ax then return nil end
-            local lp = get_controller_game_world_pos("left")
-            local rp = get_controller_game_world_pos("right")
-            if not lp or not rp then return nil end
-            g.mo_dir_x, g.mo_dir_y, g.mo_dir_z = ax, ay, az
-            g.mo_span_m = span
-            g.mo_base_s = (lp.x - rp.x) * ax + (lp.y - rp.y) * ay + (lp.z - rp.z) * az
-            g.mo_ratio = 0.0
-            g.mo_init = true
-            return 0.0
+        end
+        if ax then
+            ax, ay, az = ax * s_sign, ay * s_sign, az * s_sign
+        elseif g.mo_init then
+            -- Live axis briefly unreadable mid-gesture: keep the grab-time
+            -- direction rather than dropping the pull.
+            ax, ay, az = g.mo_dir_x, g.mo_dir_y, g.mo_dir_z
+        else
+            g.mo_status = "no axis (joint unresolved)"
+            return nil
         end
 
         local lp = get_controller_game_world_pos("left")
         local rp = get_controller_game_world_pos("right")
         if not lp or not rp then
+            g.mo_status = lp and "no RIGHT controller pos" or "no LEFT controller pos"
             -- Tracking dropout mid-gesture: hold the last ratio rather
             -- than snapping the slide anywhere.
-            return g.mo_ratio or 0.0
-        end
-
-        local ax, ay, az = gesture_get_pull_axis_live(g, wp_name, ctx)
-        if ax then
-            -- Live axis follows weapon rotation; lock its sign to the
-            -- grab-time span direction so "back" stays back.
-            local d = ax * g.mo_dir_x + ay * g.mo_dir_y + az * g.mo_dir_z
-            if d < 0 then ax, ay, az = -ax, -ay, -az end
-        else
-            ax, ay, az = g.mo_dir_x, g.mo_dir_y, g.mo_dir_z
+            return g.mo_init and (g.mo_ratio or 0.0) or nil
         end
 
         local s = (lp.x - rp.x) * ax + (lp.y - rp.y) * ay + (lp.z - rp.z) * az
+        if not g.mo_init then
+            g.mo_dir_x, g.mo_dir_y, g.mo_dir_z = ax, ay, az
+            g.mo_base_s = s
+            g.mo_ratio = 0.0
+            g.mo_init = true
+            g.mo_status = "armed"
+            return 0.0
+        end
+        g.mo_status = "armed"
+
         local pull_m = (s - g.mo_base_s) - (deadzone or 0.0)
-        local span = (g.mo_span_m and g.mo_span_m > 1e-3) and g.mo_span_m
-            or gesture_effective_pull_dist(g, wp_name) or 0.05
+        -- Required hand travel = the same tuned pull distance the LT/
+        -- tracked paths use (meters), times the UI scale.
+        local span = gesture_effective_pull_dist(g, wp_name) or 0.05
         span = span * (tonumber(scale) or 1.0)
         if span < 0.005 then span = 0.005 end
 

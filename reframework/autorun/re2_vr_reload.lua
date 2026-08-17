@@ -3313,8 +3313,8 @@ local function draw_reload_ui()
             if rk then
                 if rk.active then
                     imgui.text_colored(string.format(
-                        "Motion rack: grab active, baseline %s, pull %.0f%%",
-                        rk.mo_init and "set" or "NOT SET",
+                        "Motion rack: grab active, %s, pull %.0f%%",
+                        tostring(rk.mo_status or (rk.mo_init and "armed" or "NOT ARMED")),
                         (tonumber(rk.mo_ratio) or 0.0) * 100.0), UI_ACCENT)
                 else
                     imgui.text_colored(
@@ -3345,8 +3345,8 @@ local function draw_reload_ui()
             if pg then
                 if pg.active then
                     imgui.text_colored(string.format(
-                        "Motion pump: grip active, baseline %s, pull %.0f%%",
-                        pg.mo_init and "set" or "NOT SET",
+                        "Motion pump: grip active, %s, pull %.0f%%",
+                        tostring(pg.mo_status or (pg.mo_init and "armed" or "NOT ARMED")),
                         (tonumber(pg.mo_ratio) or 0.0) * 100.0), UI_ACCENT)
                 else
                     imgui.text_colored(
