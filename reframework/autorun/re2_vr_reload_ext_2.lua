@@ -1140,36 +1140,41 @@ function M.init(deps)
         end
     end
 
-    local function get_controller_raw_openxr_pos()
+    -- `which` selects the controller ("left" default, "right" for the
+    -- weapon hand); every source below is indexed identically for both so
+    -- the two hands come back in the SAME coordinate space -- required by
+    -- the motion-rack math, which subtracts one from the other.
+    local function get_controller_raw_openxr_pos(which)
         if not vrmod then return nil end
+        local li = (which == "right") and 2 or 1
         local vrc_manager = sdk.get_managed_singleton("via.VRControllerManager")
         if vrc_manager then
             local ok_has, has = pcall(function() return vrc_manager:call("has_controllers") end)
             if ok_has and has then
                 local list = nil
                 pcall(function() list = vrc_manager.controllers_list end)
-                if list and list[1] and type(list[1].position) == "table" and type(list[1].position.x) == "number" then
-                    local p = list[1].position
+                if list and list[li] and type(list[li].position) == "table" and type(list[li].position.x) == "number" then
+                    local p = list[li].position
                     return Vector3f.new(p.x, p.y, p.z), "vrc_list"
                 end
             end
         end
         if get_vr_controller_world_pos then
-            local cp = get_vr_controller_world_pos("left")
+            local cp = get_vr_controller_world_pos((which == "right") and "right" or "left")
             if cp then return cp, "deps_raw" end
         end
         local controllers = nil
         pcall(function() controllers = vrmod:get_controllers() end)
         if not controllers then return nil end
-        local idx = controllers[1]
-        if idx == nil then idx = 1 end
+        local idx = controllers[li]
+        if idx == nil then idx = li end
         local ok, pos = pcall(function() return vrmod:get_position(idx) end)
         if ok and pos and type(pos.x) == "number" then return pos, "vrmod_raw" end
         return nil
     end
 
-    local function get_controller_game_world_pos()
-        local raw, raw_src = get_controller_raw_openxr_pos()
+    local function get_controller_game_world_pos(which)
+        local raw, raw_src = get_controller_raw_openxr_pos(which)
         if not raw then return nil, nil end
 
         local cam = get_camera_data()
@@ -1435,6 +1440,11 @@ function M.init(deps)
         rack.trigger_prev = false
         rack.hand_released_early = false
         rack.grip_release_at = nil
+        -- Fresh grab = fresh motion-rack baseline: the relative-hands
+        -- pull is always measured against where the hands were at THIS
+        -- grab, never a stale one from a previous cycle.
+        rack.mo_init = false
+        rack.mo_ratio = 0.0
         if track_pos then
             rack.start_pos = Vector3f.new(track_pos.x, track_pos.y, track_pos.z)
         end
@@ -1733,6 +1743,9 @@ function M.init(deps)
         rack.grab_slide_z = nil
         rack.pull_span_m = nil
         rack.push_span_m = nil
+        -- Motion-rack (relative-hands) state, see M.gesture_motion_ratio.
+        rack.mo_init = false
+        rack.mo_ratio = 0.0
         reset_pull_smoothing()
         clear_pull_globals()
     end
@@ -1964,6 +1977,10 @@ function M.init(deps)
                 rack.trig_committed = false
                 rack.trigger_prev = false
             end
+            if rack.mo_init then
+                rack.mo_init = false
+                rack.mo_ratio = 0.0
+            end
             return
         end
 
@@ -2040,6 +2057,27 @@ function M.init(deps)
         elseif rack.trig_travel > target then
             rack.trig_travel = math.max(rack.trig_travel - speed * dt, target)
         end
+
+        -- Motion drive (real hand motion racks the slide), layered ON TOP
+        -- of the LT drive above -- whichever is further back wins, so LT
+        -- keeps working exactly as before and pure hand motion works with
+        -- LT never touched. max() also gives the return trip the right
+        -- feel for free: with no trigger held the eased value decays
+        -- toward 0 (recoil-spring speed) but can never outrun the hands
+        -- -- the slide rides the hands back, then the existing
+        -- completion check fires once both are home.
+        local mo = nil
+        local sd_cfg = CFG.slide_dock or {}
+        if sd_cfg.motion_rack_enabled ~= false then
+            mo = M.gesture_motion_ratio(rack, wp, {
+                axis_mode = "dock",
+                get_joint = get_slide_joint,
+                get_anchor_kind = function() return rack.anchor_kind or "xform" end,
+            }, tonumber(sd_cfg.motion_pull_scale) or 1.0,
+                tonumber(sd_cfg.motion_deadzone_m) or 0.012)
+            if mo and mo > rack.trig_travel then rack.trig_travel = mo end
+        end
+
         local eased = trig_rack_ease.smoothstep01(rack.trig_travel)
         rack.pull_now = eased * get_effective_pull_dist(wp)
 
@@ -2090,7 +2128,12 @@ function M.init(deps)
             end
         end
 
-        if not rack.pull_done and rack.trig_committed and rack.trig_travel >= 1.0 - 1e-4 then
+        -- A motion pull that physically reached full travel counts as a
+        -- committed pull, same as an LT press does -- the hands actually
+        -- performed the rack, no button needed.
+        if not rack.pull_done
+            and (rack.trig_committed or (mo ~= nil and mo >= 1.0 - 1e-4))
+            and rack.trig_travel >= 1.0 - 1e-4 then
             notify_pull_limit_reached(wp, get_effective_pull_dist(wp))
         elseif rack.pull_done and not trig and rack.trig_travel <= 1e-4 then
             complete_rack_cycle(wp)
@@ -3066,6 +3109,105 @@ function M.init(deps)
             return math.max(0.0, signed)
         end
         return math.max(0.0, -signed)
+    end
+
+    -- Motion-driven rack/pump: relative-hands pull ratio (0 = parked,
+    -- 1 = fully pulled). Shared by the trigger-rack cycle here and
+    -- ext_4's manual pump cycle (via the slide_gesture module handoff).
+    --
+    -- Measures dot(P_left - P_right, pull_dir) against a baseline captured
+    -- at grab time, so ALL of these register as the same pull:
+    --   - left hand pulls back, right hand still
+    --   - right hand pushes forward, left hand still
+    --   - both at once (left back+down, right up/forward)
+    -- because only the hands' separation along the barrel axis matters,
+    -- not either hand's own world motion (the weapon translating with the
+    -- right hand cancels out of the subtraction entirely).
+    --
+    -- Direction/sign is taken from the bind-span sample: the world vector
+    -- from the slide/pump joint's parked_z pose to its back_z pose IS the
+    -- pull direction by construction -- no guessed axis-sign convention.
+    -- (The original mod's motion pump could invert front-to-back because
+    -- it projected on a raw joint axis whose sign vs. "back" was assumed;
+    -- this can't, which is the whole reason this helper exists instead of
+    -- reviving the old tracked-gesture path.) Each tick the LIVE joint
+    -- axis is re-read so the direction follows the weapon's rotation, but
+    -- its sign is locked to agree with the grab-time span vector.
+    --
+    -- Both hands are read via get_controller_game_world_pos -- the RAW
+    -- controllers transformed into game world -- NEVER __vr_lh_world,
+    -- which the slide-dock override feeds the DOCKED joint position while
+    -- racking (the hand is glued to the slide there: reading it back
+    -- would measure our own output, not the player's input).
+    function M.gesture_motion_ratio(g, wp_name, ctx, scale, deadzone)
+        if not g.mo_init then
+            local span, ax, ay, az
+            if ctx.axis_mode == "joint" then
+                local sj = ctx.get_joint and ctx.get_joint()
+                local kind = (ctx.get_anchor_kind and ctx.get_anchor_kind()) or "joint"
+                local bp = wp_name and get_slide_bind_pose(wp_name) or nil
+                if sj and bp then
+                    span, ax, ay, az = sample_joint_bind_span(sj, kind, bp)
+                end
+            else
+                span, ax, ay, az = sample_slide_bind_span(wp_name)
+            end
+            if not ax and g.pull_axis_set and g.pull_ax then
+                -- Span sample unavailable this tick (joint not resolved
+                -- yet): fall back to the axis prepare already captured,
+                -- which is also bind-span-derived when it could be.
+                ax, ay, az = g.pull_ax, g.pull_ay, g.pull_az
+                span = nil
+            end
+            if not ax then return nil end
+            local lp = get_controller_game_world_pos("left")
+            local rp = get_controller_game_world_pos("right")
+            if not lp or not rp then return nil end
+            g.mo_dir_x, g.mo_dir_y, g.mo_dir_z = ax, ay, az
+            g.mo_span_m = span
+            g.mo_base_s = (lp.x - rp.x) * ax + (lp.y - rp.y) * ay + (lp.z - rp.z) * az
+            g.mo_ratio = 0.0
+            g.mo_init = true
+            return 0.0
+        end
+
+        local lp = get_controller_game_world_pos("left")
+        local rp = get_controller_game_world_pos("right")
+        if not lp or not rp then
+            -- Tracking dropout mid-gesture: hold the last ratio rather
+            -- than snapping the slide anywhere.
+            return g.mo_ratio or 0.0
+        end
+
+        local ax, ay, az = gesture_get_pull_axis_live(g, wp_name, ctx)
+        if ax then
+            -- Live axis follows weapon rotation; lock its sign to the
+            -- grab-time span direction so "back" stays back.
+            local d = ax * g.mo_dir_x + ay * g.mo_dir_y + az * g.mo_dir_z
+            if d < 0 then ax, ay, az = -ax, -ay, -az end
+        else
+            ax, ay, az = g.mo_dir_x, g.mo_dir_y, g.mo_dir_z
+        end
+
+        local s = (lp.x - rp.x) * ax + (lp.y - rp.y) * ay + (lp.z - rp.z) * az
+        local pull_m = (s - g.mo_base_s) - (deadzone or 0.0)
+        local span = (g.mo_span_m and g.mo_span_m > 1e-3) and g.mo_span_m
+            or gesture_effective_pull_dist(g, wp_name) or 0.05
+        span = span * (tonumber(scale) or 1.0)
+        if span < 0.005 then span = 0.005 end
+
+        local ratio = pull_m / span
+        if ratio < 0.0 then ratio = 0.0 elseif ratio > 1.0 then ratio = 1.0 end
+        -- Light EMA to absorb tracking jitter (runs 2x/frame at headset
+        -- rate, so this converges in a few ms -- damping, not lag).
+        local prev = g.mo_ratio or 0.0
+        ratio = prev + (ratio - prev) * 0.4
+        -- Snap the endpoints so the cycle's >= 1.0-1e-4 latch and
+        -- <= 1e-4 completion thresholds are actually reachable through
+        -- the EMA's asymptote.
+        if ratio > 0.985 then ratio = 1.0 elseif ratio < 0.01 then ratio = 0.0 end
+        g.mo_ratio = ratio
+        return ratio
     end
 
     function M.gesture_capture_grab_span(g, wp_name, ctx)

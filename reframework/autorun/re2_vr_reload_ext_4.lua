@@ -730,6 +730,9 @@ local function clear_gesture_pull_state()
         gesture.pull_now = 0.0
         rawset(_G, "__vr_pump_pull_signed", nil)
     end
+    -- Motion-pump (relative-hands) state, see ext_2's M.gesture_motion_ratio.
+    gesture.mo_init = false
+    gesture.mo_ratio = 0.0
     gesture.pull_done = false
     gesture.pull_dir_locked = false
     gesture.pull_ax = nil
@@ -1113,6 +1116,10 @@ local function update_manual_pump_gesture()
                 gesture.pump_travel = 0.0
                 gesture.pump_committed = false
                 gesture.trigger_prev = false
+                -- Fresh grip = fresh motion-pump baseline (relative-hands
+                -- pull is measured against where the hands are right now).
+                gesture.mo_init = false
+                gesture.mo_ratio = 0.0
                 -- pull_ax/ay/az and grab_bind_z were already captured by
                 -- arm_pump_gesture() when the weapon became pump-ready, so
                 -- the hand-follow offset still works.
@@ -1155,6 +1162,24 @@ local function update_manual_pump_gesture()
             elseif gesture.pump_travel > target then
                 gesture.pump_travel = math.max(gesture.pump_travel - speed * dt, target)
             end
+
+            -- Motion drive: real relative hand motion pumps the forend,
+            -- layered on top of the LT drive above (whichever is further
+            -- back wins, so LT keeps working unchanged). Moving the LEFT
+            -- hand back, pushing the RIGHT hand (the gun) forward, or
+            -- both at once all register as the same pull -- see
+            -- M.gesture_motion_ratio in ext_2 for the mechanism and the
+            -- sign-locking that prevents the original mod's inverted
+            -- front-to-back pump readings.
+            local mo = nil
+            if mp_cfg().motion_pump_enabled ~= false
+                and slide_gesture and slide_gesture.gesture_motion_ratio then
+                mo = slide_gesture.gesture_motion_ratio(gesture, wp, pump_gesture_ctx(),
+                    tonumber(mp_cfg().motion_pull_scale) or 1.0,
+                    tonumber(mp_cfg().motion_deadzone_m) or 0.015)
+                if mo and mo > gesture.pump_travel then gesture.pump_travel = mo end
+            end
+
             local eased = pump_ease.smoothstep01(gesture.pump_travel)
             -- pull_now is treated elsewhere as a real distance in meters
             -- (e.g. the arm-IK support gate), so scale by the configured
@@ -1173,7 +1198,20 @@ local function update_manual_pump_gesture()
                 end
             end
 
-            if not gesture.pull_done and gesture.pump_committed and gesture.pump_travel >= 1.0 - 1e-4 then
+            if not gesture.pull_done
+                and (gesture.pump_committed or (mo ~= nil and mo >= 1.0 - 1e-4))
+                and gesture.pump_travel >= 1.0 - 1e-4 then
+                -- A motion pull that physically reached full travel is a
+                -- committed pump, no LT needed. For a cosmetic (not
+                -- game-required) motion cycle, arm needs_pump only here at
+                -- the full-pull point -- NOT earlier at partial pulls --
+                -- so incidental two-handed-aim hand drift can never block
+                -- firing; only a genuinely completed pull-down does, and
+                -- the return stroke then clears it via complete_pump_cycle
+                -- exactly like the LT path.
+                if not gesture.pump_is_real and not gesture.needs_pump then
+                    gesture.needs_pump = true
+                end
                 gesture.pull_done = true
                 if play_reload_sfx then play_reload_sfx("slide_rack_pull") end
                 if get_haptic_left_joystick and haptic_pulse then

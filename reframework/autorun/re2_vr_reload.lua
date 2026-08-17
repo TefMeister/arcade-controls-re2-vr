@@ -3287,6 +3287,46 @@ local function draw_reload_ui()
         end)
     end
 
+    -- Motion racking/pumping (real relative hand motion drives the slide/
+    -- pump; LT keeps working as before either way). Master toggles -- they
+    -- cover every trigger-rack / manual-pump weapon, shown here only when
+    -- the current weapon actually uses the mechanism. Read nil-tolerant
+    -- (absent key = enabled): these keys aren't in older saved JSONs, and
+    -- merge_cfg replaces the slide_dock/manual_pump tables wholesale.
+    if entry.trigger_slide_rack == true then
+        draw_weapon_mode_toggle((CFG.slide_dock or {}).motion_rack_enabled ~= false,
+            "motion_rack", "Motion slide rack (all slide-rack weapons)", function(on)
+                CFG.slide_dock = CFG.slide_dock or {}
+                CFG.slide_dock.motion_rack_enabled = on
+            end)
+        if (CFG.slide_dock or {}).motion_rack_enabled ~= false then
+            local mrc, mrv = imgui.slider_float("Motion rack pull scale##motion_rack_scale",
+                tonumber((CFG.slide_dock or {}).motion_pull_scale) or 1.0, 0.3, 3.0, "%.2f")
+            if mrc then
+                CFG.slide_dock = CFG.slide_dock or {}
+                CFG.slide_dock.motion_pull_scale = mrv
+                save_cfg()
+            end
+        end
+    end
+
+    if weapon_supports_pump_reload(wp) then
+        draw_weapon_mode_toggle((CFG.manual_pump or {}).motion_pump_enabled ~= false,
+            "motion_pump", "Motion pump action (all pump weapons)", function(on)
+                CFG.manual_pump = CFG.manual_pump or {}
+                CFG.manual_pump.motion_pump_enabled = on
+            end)
+        if (CFG.manual_pump or {}).motion_pump_enabled ~= false then
+            local mpc, mpv = imgui.slider_float("Motion pump pull scale##motion_pump_scale",
+                tonumber((CFG.manual_pump or {}).motion_pull_scale) or 1.0, 0.3, 3.0, "%.2f")
+            if mpc then
+                CFG.manual_pump = CFG.manual_pump or {}
+                CFG.manual_pump.motion_pull_scale = mpv
+                save_cfg()
+            end
+        end
+    end
+
     imgui.separator()
     imgui.tree_pop()
 end
