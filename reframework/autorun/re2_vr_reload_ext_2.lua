@@ -1158,20 +1158,35 @@ function M.init(deps)
     local function get_controller_raw_openxr_pos(which)
         if not vrmod then return nil end
         local li = (which == "right") and 2 or 1
+        -- vrmod:get_controllers() + get_position FIRST: the proven
+        -- per-hand path (ext_1 and re8_vr both use it successfully).
+        -- The VRControllerManager list was tried as the primary source
+        -- and produced IDENTICAL positions for both entries in live
+        -- 2026-08-17 logs (relative-hands s == 0.0000 exactly), so it's
+        -- demoted to a fallback with a zero-vector guard.
+        local controllers = nil
+        pcall(function() controllers = vrmod:get_controllers() end)
+        if controllers then
+            local idx = controllers[li]
+            if idx == nil then idx = li end
+            local ok, pos = pcall(function() return vrmod:get_position(idx) end)
+            if ok and pos and type(pos.x) == "number"
+                and (pos.x ~= 0.0 or pos.y ~= 0.0 or pos.z ~= 0.0) then
+                return pos, "vrmod_raw"
+            end
+        end
         local vrc_manager = sdk.get_managed_singleton("via.VRControllerManager")
         if vrc_manager then
             local ok_has, has = pcall(function() return vrc_manager:call("has_controllers") end)
             if ok_has and has then
                 local p = nil
-                -- position may be a table OR userdata depending on the
-                -- REFramework build -- the old type(...)=="table" guard
-                -- silently skipped this branch entirely on userdata.
                 pcall(function()
                     local list = vrc_manager.controllers_list
                     local entry = list and list[li]
                     p = entry and entry.position
                 end)
-                if p and type(p.x) == "number" then
+                if p and type(p.x) == "number"
+                    and (p.x ~= 0.0 or p.y ~= 0.0 or p.z ~= 0.0) then
                     return Vector3f.new(p.x, p.y, p.z), "vrc_list"
                 end
             end
@@ -1180,13 +1195,6 @@ function M.init(deps)
             local cp = get_vr_controller_world_pos((which == "right") and "right" or "left")
             if cp then return cp, "deps_raw" end
         end
-        local controllers = nil
-        pcall(function() controllers = vrmod:get_controllers() end)
-        if not controllers then return nil end
-        local idx = controllers[li]
-        if idx == nil then idx = li end
-        local ok, pos = pcall(function() return vrmod:get_position(idx) end)
-        if ok and pos and type(pos.x) == "number" then return pos, "vrmod_raw" end
         return nil
     end
 
@@ -3255,7 +3263,23 @@ function M.init(deps)
             return g.mo_init and (g.mo_ratio or 0.0) or nil
         end
 
-        local s = (lp.x - rp.x) * ax + (lp.y - rp.y) * ay + (lp.z - rp.z) * az
+        -- Self-diagnosing guard for the exact failure seen twice on
+        -- 2026-08-17: a position source returning the SAME point for
+        -- both hands makes the relative pull identically zero -- flag it
+        -- loudly instead of silently measuring nothing.
+        local hx, hy, hz = lp.x - rp.x, lp.y - rp.y, lp.z - rp.z
+        if (hx * hx + hy * hy + hz * hz) < 1e-6 then
+            g.mo_status = "hands read IDENTICAL (bad controller source)"
+            if g.mo_log_last == nil or (os.clock() - g.mo_log_last) > 0.25 then
+                g.mo_log_last = os.clock()
+                log.info(string.format(
+                    "[motion_gesture] wp=%s HANDS IDENTICAL lp=(%.3f,%.3f,%.3f)",
+                    tostring(wp_name), lp.x, lp.y, lp.z))
+            end
+            return g.mo_init and (g.mo_ratio or 0.0) or nil
+        end
+
+        local s = hx * ax + hy * ay + hz * az
         if not g.mo_init then
             g.mo_dir_x, g.mo_dir_y, g.mo_dir_z = ax, ay, az
             g.mo_base_s = s
