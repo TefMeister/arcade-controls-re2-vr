@@ -1200,19 +1200,16 @@ local function update_manual_pump_gesture()
             -- sign-locking that prevents the original mod's inverted
             -- front-to-back pump readings.
             local mo = nil
-            -- Motion drives GAME-REQUIRED pumps only (needs_pump /
-            -- pump_is_real -- true from the shot until the cycle
-            -- completes). Free/cosmetic racking stays LT-only: a motion
-            -- baseline armed during ordinary two-handed aiming turns hand
-            -- drift into phantom pulls -- live log 2026-08-18 00:34 shows
-            -- ratio pinned 0.75-1.00 for six straight seconds while just
-            -- holding the gun (needs_pump armed, fire blocked, dock
-            -- yanking the arm pose). mo_hold_off stays as an extra guard
-            -- for the post-completion tick. Set motion_cosmetic_pump
-            -- true in the manual_pump config to opt back in.
-            if (gesture.needs_pump or gesture.pump_is_real
-                    or mp_cfg().motion_cosmetic_pump == true)
-                and not gesture.mo_hold_off
+            -- Motion pumping is ALWAYS available (player's explicit call,
+            -- 2026-08-18: "i really really don't wanna give that up" --
+            -- reverts the one-session real-pumps-only experiment). Phantom
+            -- protection is layered elsewhere instead: mo_hold_off after
+            -- each completed cycle (re-squeeze LG to free-pump again --
+            -- the mechanism the player confirmed working), and a
+            -- motion-only cosmetic pull never arms needs_pump (below), so
+            -- a phantom can animate the forend at worst -- it can never
+            -- block firing.
+            if not gesture.mo_hold_off
                 and mp_cfg().motion_pump_enabled ~= false
                 and slide_gesture and slide_gesture.gesture_motion_ratio then
                 mo = slide_gesture.gesture_motion_ratio(gesture, wp, pump_gesture_ctx(),
@@ -1250,7 +1247,16 @@ local function update_manual_pump_gesture()
                 -- firing; only a genuinely completed pull-down does, and
                 -- the return stroke then clears it via complete_pump_cycle
                 -- exactly like the LT path.
-                if not gesture.pump_is_real and not gesture.needs_pump then
+                -- LT-committed cosmetic racks still arm needs_pump (an LT
+                -- press is deliberate). A MOTION-only cosmetic pull never
+                -- does: that arming is exactly how a drifted-baseline
+                -- phantom pull became a fire block (live log 2026-08-18
+                -- 00:34, ratio pinned 0.75-1.00 for 6s while just holding
+                -- the gun). Without it a phantom costs a spurious forend
+                -- animation at worst -- firing is never blocked, and the
+                -- pull-arm IK dock (needs_pump-gated) never yanks the arm.
+                if gesture.pump_committed
+                    and not gesture.pump_is_real and not gesture.needs_pump then
                     gesture.needs_pump = true
                 end
                 gesture.pull_done = true
@@ -1524,7 +1530,16 @@ end
 function Pump.update_globals()
     local want = pump_suppress_wanted()
     rawset(_G, "__vr_shotgun_pump_suppress_active", want)
-    rawset(_G, "__vr_block_empty_pump_reload_motion", want and pump_window_active())
+    -- `not gesture.active`: never block the FP left hand while the player
+    -- is actually holding the forend (grip held => active). Without this,
+    -- finishing a pump INSIDE the 2.5s post-shot suppress window
+    -- (pump_window_sec) blocked FP hand IK the moment needs_pump went
+    -- false -- the hand visibly floated off the forend for the window's
+    -- remainder ("still loses that grip", live 2026-08-18; fast motion
+    -- pumps finish well inside the window, slow LT pumps mostly ate it,
+    -- which is why this never stood out before).
+    rawset(_G, "__vr_block_empty_pump_reload_motion",
+        want and pump_window_active() and not gesture.active)
     publish_gesture_globals(get_weapon_go_name())
 end
 
