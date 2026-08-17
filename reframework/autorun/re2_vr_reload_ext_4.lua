@@ -964,8 +964,14 @@ local function update_pump_support_slide_dock(wp_name)
     end
 
     local grip = is_left_grip_pressed and is_left_grip_pressed() or false
+    -- needs_pump OR active: the hand stays attached to the forend the
+    -- whole time the grip is held. Requiring needs_pump alone dropped the
+    -- hand the instant a cycle completed ("still lets go after pump
+    -- handle goes back up", live 2026-08-18) -- with the cosmetic gesture
+    -- auto-active while gripping, the no-pull FP-passthrough branch below
+    -- hands the visual to the native support snap instead of releasing.
     local want_support = grip
-        and gesture.needs_pump
+        and (gesture.needs_pump or gesture.active)
         and resolve_pump_anchor_for_weapon(wp_name)
         and gesture.anchor ~= nil
         and slide_gesture

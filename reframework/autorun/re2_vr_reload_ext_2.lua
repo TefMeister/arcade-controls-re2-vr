@@ -2025,14 +2025,30 @@ function M.init(deps)
                 -- changes entirely and wait for the next frame's read.
                 return
             end
+            -- Pull already latched: a debounced grip release IS the
+            -- deliberate "drop the slide" gesture -- finish the cycle
+            -- (slide snaps home), the same finish-on-release the
+            -- tracked-hand path does. The player holds the slide back as
+            -- long as LG is held and drops it by releasing (requested
+            -- live 2026-08-18). Checked BEFORE the in-range anti-tremor
+            -- hold below: while holding the slide the hand is always in
+            -- range, so that 3s hold would lag the snap absurdly -- it
+            -- exists to protect mid-pull grabs from grip-sensor noise,
+            -- not a completed pull from its own release.
+            if should_finish_rack_on_release(wp) then
+                rack.grip_release_at = nil
+                complete_rack_cycle(wp)
+                return
+            end
             if rack.in_range and held_false_for < rack.grip_release_hard_cap_sec then
                 -- Past the debounce but the hand hasn't moved off the dock --
                 -- still more likely tremor/locomotion noise on the grip
                 -- sensor than a real release. Keep waiting.
                 return
             end
-            -- Grip genuinely let go before the cycle finished: abort back
-            -- to parked, same as letting go of the pump handle early does.
+            -- Grip genuinely let go early, before the pull latched: abort
+            -- back to parked, same as letting go of the pump handle early.
+            rack.grip_release_at = nil
             rack.active = false
             rack.armed = true
             rack.trig_travel = 0.0
@@ -2103,15 +2119,13 @@ function M.init(deps)
                 get_anchor_kind = function() return rack.anchor_kind or "xform" end,
             }, tonumber(sd_cfg.motion_pull_scale) or 2.0,
                 tonumber(sd_cfg.motion_deadzone_m) or 0.012)
-            -- Motion drives the PULL phase only. Once the pull has latched
-            -- (pull_done), the slide is a free recoil spring: letting the
-            -- still-pulled hands keep holding travel up forced the player
-            -- to physically push forward before the rack would complete
-            -- (reported live 2026-08-17) -- a slide snaps home on its own
-            -- the instant the pull limit is reached, no return stroke.
-            if mo and not rack.pull_done and mo > rack.trig_travel then
-                rack.trig_travel = mo
-            end
+            -- Motion drives the pull AND holds it: the player can keep the
+            -- slide pinned at full pull for as long as LG stays held
+            -- (requested live 2026-08-18, replacing the one-day-old
+            -- snap-at-full-pull behavior). Completion comes from either
+            -- releasing LG (finish-on-release in the grip branch above) or
+            -- riding the hands forward until travel reaches home.
+            if mo and mo > rack.trig_travel then rack.trig_travel = mo end
         end
 
         local eased = trig_rack_ease.smoothstep01(rack.trig_travel)
@@ -2171,14 +2185,6 @@ function M.init(deps)
             and (rack.trig_committed or (mo ~= nil and mo >= 1.0 - 1e-4))
             and rack.trig_travel >= 1.0 - 1e-4 then
             notify_pull_limit_reached(wp, get_effective_pull_dist(wp))
-            -- Motion-committed rack (no LT involved): detach the visual
-            -- hand right now, same early-detach the LT path does on
-            -- trigger release -- the slide springs forward alone while
-            -- the real hand stays wherever it is.
-            if not rack.trig_committed and not rack.hand_released_early then
-                rack.hand_released_early = true
-                snap_hand_dock_off()
-            end
         elseif rack.pull_done and not trig and rack.trig_travel <= 1e-4 then
             complete_rack_cycle(wp)
         end
