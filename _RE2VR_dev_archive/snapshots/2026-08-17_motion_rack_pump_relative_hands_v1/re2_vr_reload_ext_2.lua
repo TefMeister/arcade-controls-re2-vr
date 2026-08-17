@@ -3163,12 +3163,37 @@ function M.init(deps)
         local sj = ctx.get_joint and ctx.get_joint()
         local kind = (ctx.get_anchor_kind and ctx.get_anchor_kind()) or "joint"
         local ax, ay, az
+        local axis_src = "none"
         if sj then
-            local wm = read_anchor_world_matrix(sj, kind)
-            if bp.travel_axis == "y" then
-                ax, ay, az = axis_y_from_world_matrix(wm)
-            else
-                ax, ay, az = axis_z_from_world_matrix(wm)
+            -- The rack/pump animation writes the node's LOCAL POSITION,
+            -- which moves it in the PARENT's frame -- so the world
+            -- direction of that travel is the PARENT's axis column, not
+            -- the node's own (they only coincide when the node's local
+            -- rotation is identity, which weapon slide/pump nodes are not
+            -- guaranteed to have). Projecting on the node's own axis is
+            -- the prime suspect for every "axis projection reads ~zero
+            -- pull" failure in this system's history, this feature's
+            -- first version included.
+            local parent = sc(sj, "get_Parent")
+            if parent then
+                local pwm = sc(parent, "get_WorldMatrix")
+                local c = pwm and ((bp.travel_axis == "y") and pwm[1] or pwm[2])
+                if c and type(c.x) == "number" then
+                    local len = math.sqrt(c.x * c.x + c.y * c.y + c.z * c.z)
+                    if len > 1e-6 then
+                        ax, ay, az = c.x / len, c.y / len, c.z / len
+                        axis_src = "parent_wm"
+                    end
+                end
+            end
+            if not ax then
+                local wm = read_anchor_world_matrix(sj, kind)
+                if bp.travel_axis == "y" then
+                    ax, ay, az = axis_y_from_world_matrix(wm)
+                else
+                    ax, ay, az = axis_z_from_world_matrix(wm)
+                end
+                if ax then axis_src = "own_wm" end
             end
             if not ax then
                 local fwd = read_anchor_axis(sj, kind,
@@ -3177,6 +3202,7 @@ function M.init(deps)
                     local len = math.sqrt(fwd.x * fwd.x + fwd.y * fwd.y + fwd.z * fwd.z)
                     if len > 1e-6 then
                         ax, ay, az = fwd.x / len, fwd.y / len, fwd.z / len
+                        axis_src = "own_axis"
                     end
                 end
             end
@@ -3187,8 +3213,14 @@ function M.init(deps)
             -- Live axis briefly unreadable mid-gesture: keep the grab-time
             -- direction rather than dropping the pull.
             ax, ay, az = g.mo_dir_x, g.mo_dir_y, g.mo_dir_z
+            axis_src = "held"
         else
             g.mo_status = "no axis (joint unresolved)"
+            if g.mo_log_last == nil or (os.clock() - g.mo_log_last) > 0.25 then
+                g.mo_log_last = os.clock()
+                log.info(string.format("[motion_gesture] wp=%s NO AXIS kind=%s joint=%s",
+                    tostring(wp_name), tostring(kind), tostring(sj ~= nil)))
+            end
             return nil
         end
 
@@ -3196,6 +3228,11 @@ function M.init(deps)
         local rp = get_controller_game_world_pos("right")
         if not lp or not rp then
             g.mo_status = lp and "no RIGHT controller pos" or "no LEFT controller pos"
+            if g.mo_log_last == nil or (os.clock() - g.mo_log_last) > 0.25 then
+                g.mo_log_last = os.clock()
+                log.info(string.format("[motion_gesture] wp=%s %s",
+                    tostring(wp_name), g.mo_status))
+            end
             -- Tracking dropout mid-gesture: hold the last ratio rather
             -- than snapping the slide anywhere.
             return g.mo_init and (g.mo_ratio or 0.0) or nil
@@ -3208,6 +3245,9 @@ function M.init(deps)
             g.mo_ratio = 0.0
             g.mo_init = true
             g.mo_status = "armed"
+            log.info(string.format(
+                "[motion_gesture] ARMED wp=%s axis_src=%s sign=%.0f dir=(%.2f,%.2f,%.2f) base_s=%.4f",
+                tostring(wp_name), axis_src, s_sign, ax, ay, az, s))
             return 0.0
         end
         g.mo_status = "armed"
@@ -3230,6 +3270,12 @@ function M.init(deps)
         -- the EMA's asymptote.
         if ratio > 0.985 then ratio = 1.0 elseif ratio < 0.01 then ratio = 0.0 end
         g.mo_ratio = ratio
+        if g.mo_log_last == nil or (os.clock() - g.mo_log_last) > 0.25 then
+            g.mo_log_last = os.clock()
+            log.info(string.format(
+                "[motion_gesture] wp=%s src=%s pull_m=%.4f span=%.3f ratio=%.2f s=%.4f base=%.4f",
+                tostring(wp_name), axis_src, pull_m, span, ratio, s, g.mo_base_s))
+        end
         return ratio
     end
 
