@@ -33,10 +33,11 @@ local MAG_STATE = {
     INSERTING = "inserting",
 }
 
+-- 2026-08-18: the hip/shoulder/chest anchor entries are gone -- the ammo
+-- pouch is HMD-anchored now (see resolve_mag_holster_anchor), matching
+-- re2_vr_holster.lua's weapon-holster rework. Only the wrist joints remain
+-- (hand-position sources).
 local PLAYER_JOINT = {
-    hip = { "r_Prop_Hip_A", "spine_0" },
-    shoulder = { "l_Prop_BackWepOffset_A", "spine_2" },
-    chest = { "spine_2" },
     left_wrist = { "l_arm_wrist" },
     right_wrist = { "r_arm_wrist" },
 }
@@ -50,18 +51,46 @@ local function find_player_joint(tf, joint_names)
     return nil
 end
 
--- char_defaults folded into this same table (instead of a new top-level
--- local) -- this file was already at Lua's 200-local ceiling. Per-character
--- ammo pouch position, tuned live via the "Calibrate Ammo Holster" button
--- and baked in so a fresh install (no persisted re2_vr_reload.json yet)
--- starts these characters with a good fit instead of the shared 0/0/0
--- fallback.
+-- Offsets are in the shared HMD-yaw basis since 2026-08-18 (same convention
+-- as re2_vr_holster.lua: off_right = player's right(+)/left(-), off_up =
+-- above(+)/below(-) eye level, off_forward = ahead(+)/behind(-)). Default
+-- puts the pouch at the front-left of the waist -- a natural left-hand
+-- reach that stays clear of the left-hip magnum holster (which is
+-- right-hand/RG-driven anyway). Character-independent, so the old
+-- per-character char_defaults (tuned against Ada's skeleton joints) are
+-- gone. migrate_anchor_v2 lives on this table instead of as a new function
+-- local -- this file sat at Lua's hard 200-top-level-local ceiling.
 local MAG_HOLSTER_DEF = {
-    off_right = 0.0, off_up = 0.0, off_forward = 0.0, trigger_dist = 0.25, release_dist = 0.38,
-    char_defaults = {
-        ada = { off_right = 0.33564046728639596, off_up = -0.14209754422014242, off_forward = 0.06174400380342604 },
-    },
+    off_right = -0.15, off_up = -0.60, off_forward = 0.18, trigger_dist = 0.25, release_dist = 0.38,
 }
+
+-- One-shot migration: persisted ammo-pouch offsets from the joint-anchored
+-- system are per-skeleton values in a different basis -- reset them (and
+-- only them) to the new HMD-basis defaults. Trigger/release distances are
+-- arm-reach based and kept. Called from ensure_mag_holster_profile_entry
+-- (every profile access) behind the version guard, so it runs before any
+-- new calibration could be overwritten.
+function MAG_HOLSTER_DEF.migrate_anchor_v2()
+    local cfg = deps_ref and deps_ref.CFG
+    local mh = cfg and cfg.mag_holster
+    if type(mh) ~= "table" then return end
+    if (tonumber(mh.anchor_version) or 0) >= 2 then return end
+    mh.off_right = MAG_HOLSTER_DEF.off_right
+    mh.off_up = MAG_HOLSTER_DEF.off_up
+    mh.off_forward = MAG_HOLSTER_DEF.off_forward
+    if type(mh.per_profile) == "table" then
+        for _, entry in pairs(mh.per_profile) do
+            if type(entry) == "table" then
+                entry.off_right = MAG_HOLSTER_DEF.off_right
+                entry.off_up = MAG_HOLSTER_DEF.off_up
+                entry.off_forward = MAG_HOLSTER_DEF.off_forward
+            end
+        end
+    end
+    mh.anchor_version = 2
+    if type(deps_ref.save_cfg) == "function" then pcall(deps_ref.save_cfg) end
+    log.info("[re2_vr_reload] Migrated ammo-pouch offsets to HMD-yaw anchor basis (v2 defaults)")
+end
 
 local mag = {
     state = MAG_STATE.ATTACHED,
@@ -287,94 +316,6 @@ local function get_vr_controller_world_pos(hand)
     return nil
 end
 
-local function get_hmd_body_yaw_pose()
-    local cam = sdk.get_primary_camera()
-    if not cam then return nil end
-    local wm = deps_ref.sc(cam, "get_WorldMatrix")
-    if not wm then return nil end
-
-    local pos = { x = wm[3].x, y = wm[3].y, z = wm[3].z }
-    local right, up, fwd = body_yaw_axes_from_transform(get_player_transform())
-    if not right then
-        local fx, fz = wm[2].x, wm[2].z
-        local len = math.sqrt(fx * fx + fz * fz)
-        if len < 1e-6 then fx, fz = 0.0, 1.0 else fx, fz = fx / len, fz / len end
-        fwd = { x = fx, y = 0, z = fz }
-        right = { x = fz, y = 0, z = -fx }
-        up = { x = 0, y = 1, z = 0 }
-    end
-    return pos, nil, nil, nil, right, up, fwd
-end
-
-local function body_yaw_axes_from_transform(tf)
-    if not tf then return nil end
-    local fx, fz = nil, nil
-    local rot = deps_ref.sc(tf, "get_Rotation")
-    if rot then
-        local ok, fwd_v = pcall(function() return rot * Vector3f.new(0, 0, 1) end)
-        if ok and fwd_v then fx, fz = fwd_v.x, fwd_v.z end
-    end
-    if not fx then
-        local cam = sdk.get_primary_camera()
-        if cam then
-            local wm = deps_ref.sc(cam, "get_WorldMatrix")
-            if wm then fx, fz = wm[2].x, wm[2].z end
-        end
-    end
-    if not fx then return nil end
-    local len = math.sqrt(fx * fx + fz * fz)
-    if len < 1e-6 then fx, fz = 0.0, 1.0 else fx, fz = fx / len, fz / len end
-    local fwd = { x = fx, y = 0, z = fz }
-    local right = { x = fz, y = 0, z = -fx }
-    local up = { x = 0, y = 1, z = 0 }
-    return right, up, fwd
-end
-
-local function get_body_pose_yaw()
-    local tf = get_player_transform()
-    if not tf then return nil end
-    local right, up, fwd = body_yaw_axes_from_transform(tf)
-    if not right then return nil end
-    local pos = nil
-    for _, joint_name in ipairs({ "spine_2", "spine_1", "spine_0", "pelvis" }) do
-        local joint = deps_ref.sc(tf, "getJointByName", joint_name)
-        if joint then
-            pos = deps_ref.sc(joint, "get_Position")
-            if pos then break end
-        end
-    end
-    if not pos then pos = deps_ref.sc(tf, "get_Position") end
-    if not pos then return nil end
-    return pos, right, up, fwd
-end
-
-local function refresh_mag_holster_joint(tf, joint_names)
-    if not tf then return false end
-    if mag_holster_st.joint then
-        local valid = false
-        pcall(function() valid = mag_holster_st.joint:get_Valid() end)
-        if valid then return true end
-        mag_holster_st.joint = nil
-        mag_holster_st.anchor_joint = nil
-    end
-    local joint, joint_name = nil, nil
-    for _, name in ipairs(joint_names or PLAYER_JOINT.hip) do
-        joint = deps_ref.sc(tf, "getJointByName", name)
-        if joint then
-            joint_name = name
-            break
-        end
-    end
-    if joint then
-        mag_holster_st.joint = joint
-        mag_holster_st.anchor_joint = joint_name
-        return true
-    end
-    mag_holster_st.joint = nil
-    mag_holster_st.anchor_joint = nil
-    return false
-end
-
 local function refresh_left_hand_joint(tf)
     if not tf then return false end
     if mag_hand.hand_joint then
@@ -427,7 +368,7 @@ local function seed_mag_holster_profile_entry(key)
     local fallback_key = deps_ref.vr_char.get_pose_fallback_profile(key)
     local per_profile = deps_ref.CFG.mag_holster and deps_ref.CFG.mag_holster.per_profile
     local parent = per_profile and per_profile[fallback_key]
-    local char_default = MAG_HOLSTER_DEF.char_defaults[key] or MAG_HOLSTER_DEF
+    local char_default = MAG_HOLSTER_DEF
     if type(parent) == "table" then
         return {
             off_right = tonumber(parent.off_right) or char_default.off_right,
@@ -444,6 +385,7 @@ end
 
 local function ensure_mag_holster_profile_entry(profile_key)
     deps_ref.CFG.mag_holster = deps_ref.CFG.mag_holster or {}
+    MAG_HOLSTER_DEF.migrate_anchor_v2()
     deps_ref.CFG.mag_holster.per_profile = deps_ref.CFG.mag_holster.per_profile or {}
     local key = profile_key or current_mag_holster_profile_key()
     local entry = deps_ref.CFG.mag_holster.per_profile[key]
@@ -452,18 +394,6 @@ local function ensure_mag_holster_profile_entry(profile_key)
         deps_ref.CFG.mag_holster.per_profile[key] = entry
     end
     return entry, key
-end
-
-local function active_mag_holster_joint_name()
-    if mag_holster_st.anchor_joint then return mag_holster_st.anchor_joint end
-    if not mag_holster_st.joint then return nil end
-    local tf = get_player_transform()
-    if not tf then return nil end
-    for _, name in ipairs(PLAYER_JOINT.hip) do
-        local joint = deps_ref.sc(tf, "getJointByName", name)
-        if joint == mag_holster_st.joint then return name end
-    end
-    return nil
 end
 
 local function sync_mag_holster_profile_active()
@@ -500,35 +430,40 @@ local function decompose_hand_offset(hand_pos, anchor_pos, ax, ay, az, right, up
     return 0.0, 0.0, 0.0
 end
 
+--- HMD anchor with a YAW-ONLY basis (2026-08-18) -- same design as
+--- re2_vr_holster.lua's get_hmd_pose_yaw, replacing the old r_Prop_Hip_A/
+--- spine_0 joint anchor (the skeleton twists with animation, which made
+--- body-anchored zones swing around the player's real body). Position = VR
+--- camera world position; axes = camera forward projected onto the
+--- horizontal plane (up = world up), so head pitch/roll can't rotate the
+--- offsets. Returned as (origin, ax, ay, az) = (pos, right, up, fwd) --
+--- orthonormal, so every existing holster_pos_with_offsets /
+--- decompose_hand_offset call site works unchanged. Degenerate headings
+--- (looking straight up/down) hold the last-good heading via the
+--- mag_holster_st.hmd_fx/fz cache instead of flipping.
 local function resolve_mag_holster_anchor()
-    local tf = get_player_transform()
-    if not tf then return nil end
-
-    refresh_mag_holster_joint(tf, PLAYER_JOINT.hip)
-
-    mag_holster_st.anchor_fallback = false
-    if mag_holster_st.joint then
-        local origin = deps_ref.sc(mag_holster_st.joint, "get_Position")
-        if origin then
-            return origin,
-                deps_ref.sc(mag_holster_st.joint, "get_AxisX"),
-                deps_ref.sc(mag_holster_st.joint, "get_AxisY"),
-                deps_ref.sc(mag_holster_st.joint, "get_AxisZ")
-        end
+    local cam = sdk.get_primary_camera()
+    if not cam then return nil end
+    local wm = deps_ref.sc(cam, "get_WorldMatrix")
+    if not wm then return nil end
+    local pos = { x = wm[3].x, y = wm[3].y, z = wm[3].z }
+    local fx, fz = wm[2].x, wm[2].z
+    local len = math.sqrt(fx * fx + fz * fz)
+    if len >= 0.05 then
+        mag_holster_st.hmd_fx, mag_holster_st.hmd_fz = fx / len, fz / len
     end
-
-    local body_pos, right, up, fwd = get_body_pose_yaw()
-    if body_pos then
-        mag_holster_st.anchor_fallback = true
-        return body_pos, right, up, fwd
-    end
-    return nil
+    fx = mag_holster_st.hmd_fx or 0.0
+    fz = mag_holster_st.hmd_fz or 1.0
+    return pos,
+        { x = fz, y = 0, z = -fx },
+        { x = 0, y = 1, z = 0 },
+        { x = fx, y = 0, z = fz }
 end
 
+-- Capture basis MUST match the runtime basis exactly, or a calibrated
+-- offset means something different at capture time vs. in play.
 local function mag_holster_capture_pose()
-    local origin, ax, ay, az = resolve_mag_holster_anchor()
-    if origin then return origin, ax, ay, az end
-    return get_body_pose_yaw()
+    return resolve_mag_holster_anchor()
 end
 
 local function get_mag_holster_offsets()
@@ -542,12 +477,8 @@ end
 local function resolve_mag_holster_pos()
     local origin, ax, ay, az = resolve_mag_holster_anchor()
     if not origin then return nil end
-    local right, up, fwd = ax, ay, az
-    if not (ax and ay and az) then
-        _, right, up, fwd = get_body_pose_yaw()
-    end
     local off_r, off_u, off_f = get_mag_holster_offsets()
-    return holster_pos_with_offsets(origin, off_r, off_u, off_f, ax, ay, az, right, up, fwd)
+    return holster_pos_with_offsets(origin, off_r, off_u, off_f, ax, ay, az)
 end
 
 local function haptic_pulse(joystick, duration, frequency, amplitude)
@@ -780,7 +711,7 @@ local function tick_mag_holster_calibrate()
     haptic_pulse(lj or get_left_joystick(), 0.25, 250.0, 1.0)
 
     local profile_key = current_mag_holster_profile_key()
-    local anchor_label = active_mag_holster_joint_name() or "body"
+    local anchor_label = "hmd"
     mag_holster_st.status = string.format(
         "Calibrated [%s]: r=%.3f u=%.3f f=%.3f (anchor: %s)",
         profile_key, off_x, off_y, off_z, anchor_label)
@@ -2466,13 +2397,8 @@ local function refresh_mag_holster_zone(hand_pos, lj)
         return false
     end
 
-    local right, up, fwd = ax, ay, az
-    if not (ax and ay and az) then
-        _, right, up, fwd = get_body_pose_yaw()
-    end
-
     local off_r, off_u, off_f = get_mag_holster_offsets()
-    local holster_pos = holster_pos_with_offsets(origin, off_r, off_u, off_f, ax, ay, az, right, up, fwd)
+    local holster_pos = holster_pos_with_offsets(origin, off_r, off_u, off_f, ax, ay, az)
     if not holster_pos then
         mag_holster_st.in_zone = false
         mag_holster_st.last_pos = nil
@@ -2738,12 +2664,8 @@ local function update_mag_holster_zone()
     if not hand_pos then
         local origin, ax, ay, az = resolve_mag_holster_anchor()
         if origin then
-            local right, up, fwd = ax, ay, az
-            if not (ax and ay and az) then
-                _, right, up, fwd = get_body_pose_yaw()
-            end
             local off_r, off_u, off_f = get_mag_holster_offsets()
-            mag_holster_st.last_pos = holster_pos_with_offsets(origin, off_r, off_u, off_f, ax, ay, az, right, up, fwd)
+            mag_holster_st.last_pos = holster_pos_with_offsets(origin, off_r, off_u, off_f, ax, ay, az)
         end
         mag_holster_st.in_zone = false
         mag_holster_st.grab_ready_prev = false

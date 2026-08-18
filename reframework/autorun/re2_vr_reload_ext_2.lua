@@ -2119,9 +2119,18 @@ function M.init(deps)
         -- completion check fires once both are home.
         local mo = nil
         local sd_cfg = CFG.slide_dock or {}
+        -- LT owns the return stroke it commanded: once an LT-committed pull
+        -- is released, the spring must run home unopposed. The left hand is
+        -- still physically back at the slide (LG held), so without this gate
+        -- the motion ratio -- noisy EMA hovering near full pull -- re-raises
+        -- the decaying travel every time tracking noise crosses it, and the
+        -- slide visibly stalls or backtracks on its way home
+        -- (player-reported on Matilda, 2026-08-18). Motion-committed pulls
+        -- (trig_committed false) keep the hold-and-ride-home behavior.
+        local lt_return_stroke = rack.pull_done and rack.trig_committed and not trig
         -- grip-gated: you cannot hold a slide you are not gripping. This
         -- is also what lets the LG-release fall-through above spring home.
-        if grip and sd_cfg.motion_rack_enabled ~= false then
+        if grip and not lt_return_stroke and sd_cfg.motion_rack_enabled ~= false then
             mo = M.gesture_motion_ratio(rack, wp, {
                 axis_mode = "dock",
                 get_joint = get_slide_joint,

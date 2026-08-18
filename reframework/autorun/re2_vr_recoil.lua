@@ -2405,17 +2405,80 @@ local function get_wrist_side_for_ik_call(arm_fit, arm_fit_data)
     ik_calls_this_frame = ik_calls_this_frame + 1
     local ik_call = wrist_side_call_count
 
+    -- Persistent per-arm identity (2026-08-18): the native engine can never
+    -- misassign arms because each IkArmFit component IS one specific arm --
+    -- identity is structural, not derived. Mirror that: whenever a
+    -- ground-truth signal identifies this solver object's side (apply-joint
+    -- name/hash, the native LeftHand field, or the skeletal bone-distance
+    -- teacher below), remember it by object address and never fall back to
+    -- positional guessing for that object again. The positional fallbacks
+    -- (camera-relative hand reconstructions) are what flipped identity when
+    -- the player looked far off-axis -- the sole unsolved blocker on the
+    -- RG+LG latch ("aiming backwards" / both hands glitching on head turn).
+    local id_key = nil
+    pcall(function() if arm_fit ~= nil then id_key = arm_fit:get_address() end end)
+    if id_key == nil then
+        pcall(function() if arm_fit_data ~= nil then id_key = arm_fit_data:get_address() end end)
+    end
+    local id_cache = frame_ik.wrist_side_by_id
+    local function learned(s, m)
+        if id_key ~= nil and s ~= nil then
+            if id_cache == nil then
+                id_cache = {}
+                frame_ik.wrist_side_by_id = id_cache
+            elseif id_cache[id_key] == nil then
+                -- Cheap guard against address churn across scene reloads:
+                -- reset rather than let dead addresses accumulate.
+                local n = 0
+                for _ in pairs(id_cache) do n = n + 1 end
+                if n >= 8 then
+                    id_cache = {}
+                    frame_ik.wrist_side_by_id = id_cache
+                end
+            end
+            id_cache[id_key] = s
+        end
+        return s, m
+    end
+
     local side, method = get_wrist_side_from_apply_joint(arm_fit)
     if side ~= nil then
-        return side, method
+        return learned(side, method)
     end
 
     if is_left_arm_fit_data(arm_fit_data) == false then
-        return "right", "arm_fit_right_field"
+        return learned("right", "arm_fit_right_field")
+    end
+
+    if id_cache ~= nil and id_key ~= nil and id_cache[id_key] ~= nil then
+        return id_cache[id_key], "identity_cache"
     end
 
     local dr, dl, target_pos
     side, method, dr, dl, target_pos = get_wrist_side_from_target_matrix(arm_fit_data)
+
+    -- Bone-distance teacher: compare the IK target against the player's
+    -- ACTUAL skeletal wrist joints (genuine world space via the motion
+    -- system -- head orientation cannot shift these, unlike the
+    -- camera-relative reconstructions the tiers below use). Only answers
+    -- with a confident margin, which is exactly when it's allowed to teach
+    -- the identity cache; with both hands together on a weapon it stays
+    -- silent and the cache (taught earlier, hands apart) carries it.
+    if target_pos ~= nil then
+        local lb = get_motion_wrist_pose("left")
+        local rb = get_motion_wrist_pose("right")
+        if lb ~= nil and rb ~= nil then
+            local dbr = vec3_dist(target_pos, rb)
+            local dbl = vec3_dist(target_pos, lb)
+            if math.abs(dbr - dbl) >= 0.05 then
+                if dbr < dbl then
+                    return learned("right", "bone_distance")
+                end
+                return learned("left", "bone_distance")
+            end
+        end
+    end
+
     if dr ~= nil and dr < WEAPON_NEAR_RIGHT_CONTROLLER_DIST then
         return "right", "near_right_controller"
     end

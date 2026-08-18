@@ -62,13 +62,16 @@ local PISTOL_IDS = {
 
 local LONGARM_IDS = {
     [1000] = true, [1100] = true, [2200] = true,
-    [4100] = true, [4000] = true,
+    [4100] = true,
 }
 
 --- wp2000 (MQ 11) intentionally lives here, not LONGARM_IDS -- player wants
 --- it drawn/stowed at the chest/left-hip slot instead of the shoulder.
+--- wp4000 (Ada's EMF Visualizer -- live-verified id, NOT wp4500) moved here
+--- from LONGARM_IDS 2026-08-18, same player request: draw/stow it at the
+--- left hip instead of the shoulder.
 local CHEST_IDS = {
-    [3000] = true, [3200] = true, [2000] = true,
+    [3000] = true, [3200] = true, [2000] = true, [4000] = true,
 }
 
 --- Heavy/special weapons: Chemical Flamethrower, Spark Shot, Anti-Tank
@@ -305,6 +308,10 @@ local CFG = {
     suppress_shoot_ready_after_holster_s = 0.45,
     suppress_shoot_ready_in_holster_zone = true,
     head_flashlight_enabled = true,
+    -- 2 = HMD-yaw anchored zones (2026-08-18). Persisted profiles from the
+    -- old joint-anchored system carry offsets in a different basis; on load
+    -- they get reset to the new defaults when this key is absent/older.
+    holster_anchor_version = 2,
 }
 
 local PROFILE_KEYS = {
@@ -321,23 +328,33 @@ local PROFILE_KEYS = {
     "special_trigger_dist", "special_release_dist", "special_cooldown",
 }
 
+-- All offsets are in the shared HMD-yaw basis (see get_hmd_pose_yaw):
+-- off "x"/"right" = player's right (+) / left (-), off "y"/"up" = above (+) /
+-- below (-) eye level, off "z"/"forward" = ahead (+) / behind (-). Same basis
+-- for every character, so these defaults are player-body guesses (average
+-- standing eye-to-hip drop ~0.72 m), refined per player via the Calibrate
+-- button -- NOT per-character skeleton values like the old joint-anchored
+-- system needed.
 local function make_default_profile()
     return {
-        hip_pistol_off_right = 0.0,
-        hip_pistol_off_up = 0.0,
-        hip_pistol_off_forward = 0.0,
+        -- Right hip (pistols)
+        hip_pistol_off_right = 0.28,
+        hip_pistol_off_up = -0.72,
+        hip_pistol_off_forward = 0.05,
         hip_pistol_trigger_dist = 0.25,
         hip_pistol_release_dist = 0.38,
         hip_pistol_cooldown = 0.6,
-        shoulder_off_x = 0.0,
-        shoulder_off_y = 0.0,
-        shoulder_off_z = 0.0,
+        -- Right shoulder (long arms)
+        shoulder_off_x = 0.22,
+        shoulder_off_y = -0.20,
+        shoulder_off_z = -0.12,
         shoulder_trigger_dist = 0.40,
         shoulder_release_dist = 0.50,
         shoulder_cooldown = 0.6,
-        chest_off_x = 0.0,
-        chest_off_y = 0.0,
-        chest_off_z = 0.0,
+        -- Left hip (magnums; slot keeps its legacy "chest" key names)
+        chest_off_x = -0.28,
+        chest_off_y = -0.72,
+        chest_off_z = 0.05,
         chest_trigger_dist = 0.40,
         chest_release_dist = 0.50,
         chest_cooldown = 0.6,
@@ -353,37 +370,21 @@ local function make_default_profile()
         last_longarm_guid = "",
         last_revolver_guid = "",
         last_special_guid = "",
-        -- (0,0,0) = right at the shoulder joint itself, now that this slot
-        -- is shoulder-anchored (was HMD-anchored, where 0.27 up meant
-        -- "just above the head") -- a sensible pre-Calibrate starting point.
-        special_off_x = 0.0,
-        special_off_y = 0.0,
-        special_off_z = 0.0,
+        -- Left shoulder (special weapons)
+        special_off_x = -0.22,
+        special_off_y = -0.20,
+        special_off_z = -0.12,
         special_trigger_dist = 0.22,
         special_release_dist = 0.34,
         special_cooldown = 0.5,
     }
 end
 
---- Leon's holster positions tuned via live in-headset testing (2026-08-02):
---- pistol/longarm pushed further right for reach, chest slot repositioned
---- to a low left-hip spot (via the in-game Calibrate button) to stop it
---- swinging into RG's reach when the body turns to follow the HMD. Baked
---- in here so a fresh install (no persisted JSON yet) still starts Leon
---- with a good fit instead of raw 0.0 offsets.
-local function make_leon_default_profile()
-    local P = make_default_profile()
-    P.hip_pistol_off_right = -0.448550288748239
-    P.shoulder_off_x = -0.34600842420778977
-    P.shoulder_off_z = 0.00858026132993757
-    P.chest_off_x = 0.19062482810372117
-    P.chest_off_y = -0.06965267461799048
-    P.chest_off_z = 0.20812607422779672
-    return P
-end
-
+-- Leon's old baked-in per-skeleton offset overrides (tuned 2026-08-02 for
+-- the joint-anchored system) were removed with the HMD-yaw re-anchor: the
+-- new basis is character-independent, so the shared defaults fit everyone.
 local PROFILES = {
-    leon = make_leon_default_profile(),
+    leon = make_default_profile(),
     claire = make_default_profile(),
     ada = make_default_profile(),
     hunk = make_default_profile(),
@@ -521,6 +522,26 @@ local function load_cfg_from_disk()
         CFG.shoulder_zone_haptic_enabled = base
         CFG.chest_zone_haptic_enabled = base
         CFG.special_zone_haptic_enabled = base
+    end
+    -- Anchor-basis migration: offsets persisted by the old joint-anchored
+    -- system are in per-skeleton joint bases and mean something entirely
+    -- different under the HMD-yaw basis -- reset them (and only them) to
+    -- the new defaults. Trigger/release distances and cooldowns are
+    -- arm-reach/timing based, basis-independent, so they're kept.
+    if type(data) == "table" and (tonumber(data.holster_anchor_version) or 0) < 2 then
+        local D = make_default_profile()
+        for _, P in pairs(PROFILES) do
+            for _, k in ipairs({
+                "hip_pistol_off_right", "hip_pistol_off_up", "hip_pistol_off_forward",
+                "shoulder_off_x", "shoulder_off_y", "shoulder_off_z",
+                "chest_off_x", "chest_off_y", "chest_off_z",
+                "special_off_x", "special_off_y", "special_off_z",
+            }) do
+                P[k] = D[k]
+            end
+        end
+        log.info("[re2_vr_holster] Migrated holster offsets to HMD-yaw anchor basis (v2 defaults)")
+        save_cfg() -- stamp holster_anchor_version=2 so this runs exactly once
     end
     for _, P in pairs(PROFILES) do
         if P.last_pistol ~= 0 and not is_pistol_category(P.last_pistol) then
@@ -1559,17 +1580,12 @@ local function holster_haptic_pulse(joystick, duration, frequency, amplitude)
     haptic_pulse(joystick, duration, frequency, base * holster_haptic_intensity())
 end
 
+-- 2026-08-18: holster zones no longer anchor to skeletal joints at all --
+-- the skeleton twists with animation (esp. since the soft-mode spine work),
+-- which made joint-anchored zones swing around the player's real body.
+-- Zones are now HMD-anchored (see get_hmd_pose_yaw). Only the wrist joint
+-- is still needed, as the hand-position source.
 local PLAYER_JOINT = {
-    hip = { "r_Prop_Hip_A", "spine_0" },
-    shoulder = { "l_Prop_BackWepOffset_A", "spine_2" },
-    -- Tried repointing this to a mirrored "l_Prop_Hip_A" prop bone
-    -- (2026-08-02) to keep it away from RG's reach, but that bone either
-    -- doesn't exist on this skeleton or has a very different orientation
-    -- than r_Prop_Hip_A -- made the zone completely unreachable (no
-    -- haptics at all). Reverted to spine_2; repositioning handled via
-    -- off_x/off_y/off_z instead, same as before.
-    chest = { "spine_2" },
-    left_wrist = { "l_arm_wrist" },
     right_wrist = { "r_arm_wrist" },
 }
 
@@ -1584,7 +1600,6 @@ end
 
 local function make_holster_state()
     return {
-        joint = nil,
         in_zone = false,
         last_grab_t = -1.0,
         last_dist = 0.0,
@@ -1756,72 +1771,39 @@ local function vec3_dot(a, b)
     return a.x * b.x + a.y * b.y + a.z * b.z
 end
 
-local function body_yaw_axes_from_transform(tf)
-    if not tf then return nil end
-    local fx, fz = nil, nil
-    local ok_r, rot = pcall(function() return tf:call("get_Rotation") end)
-    if ok_r and rot then
-        local ok_f, fwd_v = pcall(function() return rot * Vector3f.new(0, 0, 1) end)
-        if ok_f and fwd_v then fx, fz = fwd_v.x, fwd_v.z end
-    end
-    if not fx then
-        local cam = sdk.get_primary_camera()
-        if cam then
-            local ok, wm = pcall(function() return cam:call("get_WorldMatrix") end)
-            if ok and wm then fx, fz = wm[2].x, wm[2].z end
-        end
-    end
-    if not fx then return nil end
+-- Last-known-good HMD heading, kept across frames so a degenerate sample
+-- (looking almost straight up/down leaves nearly no horizontal forward to
+-- project) can't flip the basis for a frame -- we hold the previous heading
+-- instead.
+local HMD_YAW = { fx = 0.0, fz = 1.0 }
+
+--- HMD anchor with a YAW-ONLY basis, the one shared anchor for all 4 zones.
+--- Position = the VR camera's world position (REFramework drives the camera
+--- from the headset, so this tracks physical/roomscale movement 1:1, unlike
+--- skeletal joints which twist with animation). Axes = the camera's forward
+--- projected onto the horizontal plane (up = world up). Yaw-only matters:
+--- the old (pre-2026-08-11) HMD anchor used the camera's FULL orientation
+--- axes, so pitching/rolling the head rotated the offsets with it -- that's
+--- what made sideways zone placements land "on the wrong side or behind"
+--- during physical turning (you tilt your head while turning in a room, you
+--- don't while stick-turning). With yaw-only axes the zones stay at a fixed
+--- heading and height relative to your head no matter where you look.
+local function get_hmd_pose_yaw()
+    local cam = sdk.get_primary_camera()
+    if not cam then return nil end
+    local ok, wm = pcall(function() return cam:call("get_WorldMatrix") end)
+    if not ok or not wm then return nil end
+    local pos = { x = wm[3].x, y = wm[3].y, z = wm[3].z }
+    local fx, fz = wm[2].x, wm[2].z
     local len = math.sqrt(fx * fx + fz * fz)
-    if len < 1e-6 then fx, fz = 0.0, 1.0 else fx, fz = fx / len, fz / len end
+    if len >= 0.05 then
+        HMD_YAW.fx, HMD_YAW.fz = fx / len, fz / len
+    end
+    fx, fz = HMD_YAW.fx, HMD_YAW.fz
     local fwd = { x = fx, y = 0, z = fz }
     local right = { x = fz, y = 0, z = -fx }
     local up = { x = 0, y = 1, z = 0 }
-    return right, up, fwd
-end
-
---- Body-locked anchor (spine/root). Yaw-only basis — stable when pitching the HMD.
-local function get_body_pose_yaw()
-    local tf = get_player_transform()
-    if not tf then return nil end
-    local right, up, fwd = body_yaw_axes_from_transform(tf)
-    if not right then return nil end
-
-    local pos = nil
-    for _, joint_name in ipairs({ "spine_2", "spine_1", "spine_0", "pelvis" }) do
-        local joint = safe_call(tf, "getJointByName", joint_name)
-        if joint then
-            pos = safe_call(joint, "get_Position")
-            if pos then break end
-        end
-    end
-    if not pos then pos = safe_call(tf, "get_Position") end
-    if not pos then return nil end
     return pos, right, up, fwd
-end
-
--- 2026-08-11: removed the HMD/camera-relative pose chain that used to live
--- here (normalize_axis_vec/axes_from_world_matrix/vec3_add/vec3_sub/
--- quat_rotate_vec3/get_game_world_camera_pose/get_hmd_pose_local) --
--- confirmed fully unused after the "special" holster slot was re-anchored
--- from the HMD to PLAYER_JOINT.shoulder (see refresh_holster_zone's
--- special-slot call sites and holster_capture_pose). Preserved in the dev
--- archive if this ever needs revisiting.
-
-local function refresh_holster_joint(tf, holster_state, joint_names)
-    if not tf or not holster_state then return false end
-    if holster_state.joint then
-        local valid = false
-        pcall(function() valid = holster_state.joint:get_Valid() end)
-        if valid then return true end
-        holster_state.joint = nil
-    end
-    local joint = find_player_joint(tf, joint_names)
-    if joint then
-        holster_state.joint = joint
-        return true
-    end
-    return false
 end
 
 local function refresh_right_hand_joint(tf)
@@ -1840,73 +1822,23 @@ local function refresh_right_hand_joint(tf)
     return false
 end
 
-local function holster_pos_with_offsets(origin, off_x, off_y, off_z, ax, ay, az, right, up, fwd)
+local function holster_pos_with_offsets(origin, off_x, off_y, off_z, right, up, fwd)
     if not origin then return nil end
-    if ax and ay and az then
-        return {
-            x = origin.x + ax.x * off_x + ay.x * off_y + az.x * off_z,
-            y = origin.y + ax.y * off_x + ay.y * off_y + az.y * off_z,
-            z = origin.z + ax.z * off_x + ay.z * off_y + az.z * off_z,
-        }
-    end
-    if right and up and fwd then
-        return {
-            x = origin.x + off_x * right.x + off_y * up.x + off_z * fwd.x,
-            y = origin.y + off_x * right.y + off_y * up.y + off_z * fwd.y,
-            z = origin.z + off_x * right.z + off_y * up.z + off_z * fwd.z,
-        }
-    end
-    return origin
+    return {
+        x = origin.x + off_x * right.x + off_y * up.x + off_z * fwd.x,
+        y = origin.y + off_x * right.y + off_y * up.y + off_z * fwd.y,
+        z = origin.z + off_x * right.z + off_y * up.z + off_z * fwd.z,
+    }
 end
 
-local function decompose_hand_offset(hand_pos, anchor_pos, ax, ay, az, right, up, fwd)
+local function decompose_hand_offset(hand_pos, anchor_pos, right, up, fwd)
     if not hand_pos or not anchor_pos then return 0.0, 0.0, 0.0 end
-    local dx = hand_pos.x - anchor_pos.x
-    local dy = hand_pos.y - anchor_pos.y
-    local dz = hand_pos.z - anchor_pos.z
-    if ax and ay and az then
-        return vec3_dot({ x = dx, y = dy, z = dz }, ax),
-            vec3_dot({ x = dx, y = dy, z = dz }, ay),
-            vec3_dot({ x = dx, y = dy, z = dz }, az)
-    end
-    if right and up and fwd then
-        return vec3_dot({ x = dx, y = dy, z = dz }, right),
-            vec3_dot({ x = dx, y = dy, z = dz }, up),
-            vec3_dot({ x = dx, y = dy, z = dz }, fwd)
-    end
-    return 0.0, 0.0, 0.0
-end
-
-local function resolve_holster_anchor(holster_state, joint_names)
-    local tf = get_player_transform()
-    if not tf then return nil end
-    refresh_holster_joint(tf, holster_state, joint_names)
-    if holster_state.joint then
-        local origin = safe_call(holster_state.joint, "get_Position")
-        if origin then
-            return origin,
-                safe_call(holster_state.joint, "get_AxisX"),
-                safe_call(holster_state.joint, "get_AxisY"),
-                safe_call(holster_state.joint, "get_AxisZ")
-        end
-    end
-    local body_pos, right, up, fwd = get_body_pose_yaw()
-    if body_pos then return body_pos, right, up, fwd end
-    return nil
-end
-
-local function holster_capture_pose(slot)
-    local probe = { joint = nil }
-    -- "special" shares the shoulder joint (see refresh_holster_zone's
-    -- special-slot call sites) rather than the HMD -- must match the
-    -- runtime anchor exactly, or a calibrated offset would be captured
-    -- against one basis and applied against a different one at runtime.
-    local joint_names = (slot == "special") and PLAYER_JOINT.shoulder or PLAYER_JOINT[slot]
-    if joint_names then
-        local origin, ax, ay, az = resolve_holster_anchor(probe, joint_names)
-        if origin then return origin, ax, ay, az end
-    end
-    return get_body_pose_yaw()
+    local d = {
+        x = hand_pos.x - anchor_pos.x,
+        y = hand_pos.y - anchor_pos.y,
+        z = hand_pos.z - anchor_pos.z,
+    }
+    return vec3_dot(d, right), vec3_dot(d, up), vec3_dot(d, fwd)
 end
 
 local function zone_haptic_opts_for_slot(slot)
@@ -1975,42 +1907,24 @@ local function get_right_hand_pos()
     return get_joint_world_pos(get_player_transform(), "r_arm_wrist")
 end
 
-local function get_left_hand_pos()
-    local j = rawget(_G, "__vr_lh_joint_pos")
-    if j and type(j.x) == "number" then return j end
-    local w = rawget(_G, "__vr_lh_world")
-    if w and type(w.x) == "number" then return w end
-    return get_joint_world_pos(get_player_transform(), "l_arm_wrist")
-end
-
---- Offset from the shoulder joint (see refresh_holster_zone's special-slot
---- call sites) -- default (0,0,0) sits right at the joint itself. Unlike
---- the old HMD-anchored version, all 3 axes are safe to use now (a real
---- skeletal joint tracks true body orientation, not just "up"), so this can
---- be placed anywhere reachable near the shoulder via the Calibrate button,
---- same as the other 3 zones -- e.g. genuinely at the left shoulder, not
---- just vertically above the head.
 local function resolve_special_offsets(P)
     if not P then return 0.0, 0.0, 0.0 end
     return P.special_off_x or 0.0, P.special_off_y or 0.0, P.special_off_z or 0.0
 end
 
-local function refresh_holster_zone(holster_state, cfg_enabled, joint_names,
+--- `anchor` is the shared per-frame HMD-yaw pose ({origin, right, up, fwd},
+--- from get_hmd_pose_yaw), computed once by each caller and reused for all
+--- 4 zones -- the same basis the Calibrate capture decomposes against, and
+--- those two MUST stay identical or a calibrated offset means something
+--- different at capture time vs. runtime.
+local function refresh_holster_zone(holster_state, cfg_enabled, anchor,
     off_x, off_y, off_z, trigger_dist, release_dist, hand_pos, rj, zone_slot)
-    if not cfg_enabled or not hand_pos then
+    if not cfg_enabled or not hand_pos or not anchor then
         holster_state.in_zone = false
         return
     end
-    local origin, ax, ay, az = resolve_holster_anchor(holster_state, joint_names)
-    if not origin then
-        holster_state.in_zone = false
-        return
-    end
-    local right, up, fwd = ax, ay, az
-    if not (ax and ay and az) then
-        _, right, up, fwd = get_body_pose_yaw()
-    end
-    local holster_pos = holster_pos_with_offsets(origin, off_x, off_y, off_z, ax, ay, az, right, up, fwd)
+    local holster_pos = holster_pos_with_offsets(anchor.origin, off_x, off_y, off_z,
+        anchor.right, anchor.up, anchor.fwd)
     holster_state.last_pos = holster_pos
     local d = vec3_dist(hand_pos, holster_pos)
     holster_state.last_dist = d
@@ -2025,22 +1939,6 @@ local function refresh_holster_zone(holster_state, cfg_enabled, joint_names,
     end
     maybe_zone_haptic(holster_state, rj, zone_slot)
 end
-
--- 2026-08-11: re-anchored from the HMD to PLAYER_JOINT.shoulder (the same
--- left-shoulder prop bone the long-arm shoulder zone already uses -- see
--- that table's own comment history for why this specific bone). Previously
--- special_off_x/off_z were kept at 0 (vertical-only offset) because the
--- HMD/camera pose (get_hmd_pose_local -> get_game_world_camera_pose,
--- documented as "not raw play-space tracking") was found to drift out of
--- sync with the player's real facing during physical room-scale turning --
--- fine for a straight-up-from-head offset (up doesn't rotate with yaw), but
--- unusable for a sideways placement like "at my left shoulder" specifically.
--- A real skeletal joint tracks true body orientation instead, so it doesn't
--- have that problem -- same reasoning already proven out by the chest zone's
--- successful chest-to-left-hip recalibration. refresh_special_zone was
--- folded into the general-purpose refresh_holster_zone (identical logic,
--- just needed the right joint) rather than kept as its own near-duplicate
--- function -- see both call sites below.
 
 --- Pre-UpdateBehavior zone refresh (independent of right-grip hold silence in on_frame).
 local function refresh_weapon_holster_zones_for_suppress()
@@ -2084,6 +1982,16 @@ local function refresh_weapon_holster_zones_for_suppress()
         return false
     end
 
+    local h_origin, h_right, h_up, h_fwd = get_hmd_pose_yaw()
+    if not h_origin then
+        hip.in_zone = false
+        shoulder.in_zone = false
+        chest.in_zone = false
+        special.in_zone = false
+        return false
+    end
+    local anchor = { origin = h_origin, right = h_right, up = h_up, fwd = h_fwd }
+
     if cur_wep and is_longarm_category(cur_wep) then
         reconcile_holster_slot_cache(P, "pistol")
     elseif cur_wep and is_pistol_category(cur_wep) then
@@ -2094,7 +2002,7 @@ local function refresh_weapon_holster_zones_for_suppress()
 
     if CFG.hip_pistol_enabled and (
         profile_has_stowed_pistol(P) or weapon_id_matches_holster_slot(cur_wep, "pistol")) then
-        refresh_holster_zone(hip, true, PLAYER_JOINT.hip,
+        refresh_holster_zone(hip, true, anchor,
             P.hip_pistol_off_right, P.hip_pistol_off_up, P.hip_pistol_off_forward,
             P.hip_pistol_trigger_dist, P.hip_pistol_release_dist,
             hand_pos, nil, "hip")
@@ -2105,7 +2013,7 @@ local function refresh_weapon_holster_zones_for_suppress()
 
     if CFG.shoulder_enabled and (
         profile_has_stowed_longarm(P) or weapon_id_matches_holster_slot(cur_wep, "longarm")) then
-        refresh_holster_zone(shoulder, true, PLAYER_JOINT.shoulder,
+        refresh_holster_zone(shoulder, true, anchor,
             P.shoulder_off_x, P.shoulder_off_y, P.shoulder_off_z,
             P.shoulder_trigger_dist, P.shoulder_release_dist,
             hand_pos, nil, "shoulder")
@@ -2116,7 +2024,7 @@ local function refresh_weapon_holster_zones_for_suppress()
 
     if CFG.chest_enabled and (
         profile_has_stowed_chest(P) or weapon_id_matches_holster_slot(cur_wep, "chest")) then
-        refresh_holster_zone(chest, true, PLAYER_JOINT.chest,
+        refresh_holster_zone(chest, true, anchor,
             P.chest_off_x, P.chest_off_y, P.chest_off_z,
             P.chest_trigger_dist, P.chest_release_dist,
             hand_pos, nil, "chest")
@@ -2128,7 +2036,7 @@ local function refresh_weapon_holster_zones_for_suppress()
     if CFG.special_enabled and (
         profile_has_stowed_special(P) or weapon_id_matches_holster_slot(cur_wep, "special")) then
         local off_x, off_y, off_z = resolve_special_offsets(P)
-        refresh_holster_zone(special, true, PLAYER_JOINT.shoulder, off_x, off_y, off_z,
+        refresh_holster_zone(special, true, anchor, off_x, off_y, off_z,
             P.special_trigger_dist, P.special_release_dist,
             hand_pos, nil, "special")
         in_any = in_any or special.in_zone
@@ -2229,7 +2137,10 @@ re.on_frame(function()
         local remaining = CAP.deadline - now
         if remaining <= 0 then
             local cap_hand = get_right_hand_pos()
-            local hmd_cap, right_cap, up_cap, fwd_cap = holster_capture_pose(CAP.target)
+            -- Capture against the exact same HMD-yaw basis the runtime zone
+            -- check uses, for every slot -- basis mismatch here would make a
+            -- calibrated offset land somewhere else in play.
+            local hmd_cap, right_cap, up_cap, fwd_cap = get_hmd_pose_yaw()
             if cap_hand and hmd_cap and right_cap and up_cap and fwd_cap then
                 local off_x, off_y, off_z = decompose_hand_offset(
                     cap_hand, hmd_cap, right_cap, up_cap, fwd_cap)
@@ -2246,10 +2157,6 @@ re.on_frame(function()
                     P.chest_off_y = off_y
                     P.chest_off_z = off_z
                 elseif CAP.target == "special" then
-                    -- No minimum-offset rejection here (unlike the other
-                    -- 3 slots' implicit "hand too close" concern doesn't
-                    -- apply) -- a near-zero offset is the desired/default
-                    -- case for this slot, not a bad calibration sample.
                     P.special_off_x = off_x
                     P.special_off_y = off_y
                     P.special_off_z = off_z
@@ -2357,6 +2264,13 @@ re.on_frame(function()
         return
     end
 
+    local h_origin, h_right, h_up, h_fwd = get_hmd_pose_yaw()
+    if not h_origin then
+        silence_all_zones()
+        return
+    end
+    local anchor = { origin = h_origin, right = h_right, up = h_up, fwd = h_fwd }
+
     local grip_now = is_right_grip_pressed()
     local rj = get_right_joystick()
     local grip_was_held = GRIP.aim_prev
@@ -2379,7 +2293,7 @@ re.on_frame(function()
     local hip_zone_active = profile_has_stowed_pistol(P)
         or weapon_id_matches_holster_slot(cur_wep, "pistol")
     if CFG.hip_pistol_enabled and hip_zone_active then
-        refresh_holster_zone(hip, true, PLAYER_JOINT.hip,
+        refresh_holster_zone(hip, true, anchor,
             P.hip_pistol_off_right, P.hip_pistol_off_up, P.hip_pistol_off_forward,
             P.hip_pistol_trigger_dist, P.hip_pistol_release_dist,
             hand_pos, rj, "hip")
@@ -2396,7 +2310,7 @@ re.on_frame(function()
     end
 
     if CFG.shoulder_enabled and (profile_has_stowed_longarm(P) or weapon_id_matches_holster_slot(cur_wep, "longarm")) then
-        refresh_holster_zone(shoulder, true, PLAYER_JOINT.shoulder,
+        refresh_holster_zone(shoulder, true, anchor,
             P.shoulder_off_x, P.shoulder_off_y, P.shoulder_off_z,
             P.shoulder_trigger_dist, P.shoulder_release_dist,
             hand_pos, rj, "shoulder")
@@ -2413,7 +2327,7 @@ re.on_frame(function()
     end
 
     if CFG.chest_enabled and (profile_has_stowed_chest(P) or weapon_id_matches_holster_slot(cur_wep, "chest")) then
-        refresh_holster_zone(chest, true, PLAYER_JOINT.chest,
+        refresh_holster_zone(chest, true, anchor,
             P.chest_off_x, P.chest_off_y, P.chest_off_z,
             P.chest_trigger_dist, P.chest_release_dist,
             hand_pos, rj, "chest")
@@ -2431,7 +2345,7 @@ re.on_frame(function()
 
     if CFG.special_enabled and (profile_has_stowed_special(P) or weapon_id_matches_holster_slot(cur_wep, "special")) then
         local off_x, off_y, off_z = resolve_special_offsets(P)
-        refresh_holster_zone(special, true, PLAYER_JOINT.shoulder, off_x, off_y, off_z,
+        refresh_holster_zone(special, true, anchor, off_x, off_y, off_z,
             P.special_trigger_dist, P.special_release_dist,
             hand_pos, rj, "special")
         holster_zones[#holster_zones + 1] = {
@@ -2625,26 +2539,28 @@ local function draw_holster_ui()
     if hic then CFG.haptic_intensity = hiv; dirty = true end
 
     if CFG.enabled then
+        imgui.text("Zones are headset-relative (yaw-only): fixed heading +")
+        imgui.text("height from your head, wherever you look or turn.")
         if draw_holster_ui_block(
-            "hip", "Hip Holster", "hip_pistol_enabled", "hip",
+            "hip", "Right Hip Holster (pistols)", "hip_pistol_enabled", "hip",
             "hip_pistol_trigger_dist", "hip_pistol_release_dist",
             "hip_zone_haptic_enabled", "hip_zone_haptic_continuous") then
             dirty = true
         end
         if draw_holster_ui_block(
-            "shoulder", "Shoulder Holster", "shoulder_enabled", "shoulder",
-            "shoulder_trigger_dist", "shoulder_release_dist",
-            "shoulder_zone_haptic_enabled", "shoulder_zone_haptic_continuous") then
-            dirty = true
-        end
-        if draw_holster_ui_block(
-            "chest", "Left Hip Holster", "chest_enabled", "chest",
+            "chest", "Left Hip Holster (magnums)", "chest_enabled", "chest",
             "chest_trigger_dist", "chest_release_dist",
             "chest_zone_haptic_enabled", "chest_zone_haptic_continuous") then
             dirty = true
         end
         if draw_holster_ui_block(
-            "special", "Special Holster (head)", "special_enabled", "special",
+            "shoulder", "Right Shoulder Holster (long arms)", "shoulder_enabled", "shoulder",
+            "shoulder_trigger_dist", "shoulder_release_dist",
+            "shoulder_zone_haptic_enabled", "shoulder_zone_haptic_continuous") then
+            dirty = true
+        end
+        if draw_holster_ui_block(
+            "special", "Left Shoulder Holster (special)", "special_enabled", "special",
             "special_trigger_dist", "special_release_dist",
             "special_zone_haptic_enabled", "special_zone_haptic_continuous") then
             dirty = true

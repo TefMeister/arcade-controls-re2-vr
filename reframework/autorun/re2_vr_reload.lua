@@ -373,10 +373,15 @@ local DEFAULT_CFG = {
         wp4400 = { enabled = false, label = "ATM-4" },
         wp4600 = { enabled = false, label = "Anti-Tank Rocket" },
         wp4700 = { enabled = false, label = "Minigun" },
-        wp7000 = { enabled = false, label = "Samurai Edge" },
-        wp7010 = { enabled = false, label = "Samurai Edge (Chris)" },
-        wp7020 = { enabled = false, label = "Samurai Edge (Jill)" },
-        wp7030 = { enabled = false, label = "Samurai Edge (Albert)" },
+        -- Samurai Edge family (2026-08-18): trigger/motion slide rack opted
+        -- in like the other slide handguns. The three DLC variants are the
+        -- same gun model as wp7000 with different finishes -- their per-
+        -- weapon tuning is mirrored from wp7000 by migrate_cfg, since the
+        -- tuning tables only ever had wp7000 entries.
+        wp7000 = { enabled = false, label = "Samurai Edge", trigger_slide_rack = true },
+        wp7010 = { enabled = false, label = "Samurai Edge (Chris)", trigger_slide_rack = true },
+        wp7020 = { enabled = false, label = "Samurai Edge (Jill)", trigger_slide_rack = true },
+        wp7030 = { enabled = false, label = "Samurai Edge (Albert)", trigger_slide_rack = true },
     },
 }
 
@@ -923,6 +928,56 @@ local function migrate_cfg(cfg)
             end
         end
     end
+    -- Samurai Edge family slide-rack rollout (2026-08-18): wp7010/7020/7030
+    -- (Chris/Jill/Albert) are the same gun model as wp7000 with different
+    -- finishes, but every per-weapon tuning table only ever got wp7000
+    -- entries, so the variants had no working manual reload or slide rack.
+    -- Mirror wp7000's tuning onto any variant slot that's still absent and
+    -- match the variants' enabled state to wp7000's. Waits until wp7000 is
+    -- actually tuned (slide bind present), then runs exactly once (stored
+    -- rev), so a player can still turn an individual variant off afterwards.
+    if (tonumber(cfg.samurai_edge_rack_migrate_rev) or 0) < 1
+        and type(cfg.slide_dock) == "table"
+        and type(cfg.slide_dock.slide_bind_by_wp) == "table"
+        and cfg.slide_dock.slide_bind_by_wp.wp7000 ~= nil then
+        local SE_VARIANTS = { "wp7010", "wp7020", "wp7030" }
+        local function mirror_wp7000(tbl)
+            if type(tbl) ~= "table" or tbl.wp7000 == nil then return end
+            for _, wp in ipairs(SE_VARIANTS) do
+                if tbl[wp] == nil then
+                    tbl[wp] = deep_copy(tbl.wp7000)
+                end
+            end
+        end
+        mirror_wp7000(cfg.mag_node_by_wp)
+        mirror_wp7000(cfg.mag_exit_by_wp)
+        mirror_wp7000(cfg.mag_dock_by_wp)
+        mirror_wp7000(cfg.mesh_parts_by_wp)
+        mirror_wp7000(type(cfg.mag_hand_hold) == "table" and cfg.mag_hand_hold.by_wp or nil)
+        if type(cfg.left_hand_pose) == "table" then
+            mirror_wp7000(type(cfg.left_hand_pose.mag_hold) == "table"
+                and cfg.left_hand_pose.mag_hold.by_wp or nil)
+            mirror_wp7000(type(cfg.left_hand_pose.slide_rack) == "table"
+                and cfg.left_hand_pose.slide_rack.by_wp or nil)
+        end
+        mirror_wp7000(cfg.slide_dock.slide_node_by_wp)
+        mirror_wp7000(cfg.slide_dock.slide_bind_by_wp)
+        mirror_wp7000(cfg.slide_dock.slide_dock_by_wp)
+        mirror_wp7000(cfg.slide_dock.dock_dist_by_wp)
+        mirror_wp7000(cfg.slide_dock.slide_ik_twist_by_wp)
+        mirror_wp7000(type(cfg.weapon_sfx) == "table" and cfg.weapon_sfx.by_wp or nil)
+        if type(cfg.weapons) == "table" and type(cfg.weapons.wp7000) == "table" then
+            for _, wp in ipairs(SE_VARIANTS) do
+                local e = cfg.weapons[wp]
+                if type(e) == "table" then
+                    e.enabled = cfg.weapons.wp7000.enabled == true
+                    e.trigger_slide_rack = true
+                end
+            end
+        end
+        cfg.samurai_edge_rack_migrate_rev = 1
+    end
+
     local rr = cfg.revolver_reload
     if type(rr) ~= "table" then return end
     if (tonumber(rr.close_gesture_migrate_rev) or 0) >= 2 then return end

@@ -1,5 +1,5 @@
-{
-    "enabled": false,
+﻿{
+    "enabled": true,
     "grip_back_by_char_wp": {
         "leon": {
             "wp1000": 0.16200000047683716
