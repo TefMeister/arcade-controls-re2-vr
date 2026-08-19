@@ -170,6 +170,20 @@ spending the tokens on it.
   interrupting the very state it was trying to measure. The *shape* of three
   independent negatives becomes the actual finding: evidence for a cause outside
   what any game-side reflection or physics probing can reach.
+- [`case-studies/2026-08-20-hiding-a-head-without-losing-its-shadow.md`](case-studies/2026-08-20-hiding-a-head-without-losing-its-shadow.md)
+  — rendering a first-person player's head shadow without the head, then the harder
+  half: bringing the head *back* only when the camera genuinely isn't on it. A damage
+  flag and a camera-to-head distance test both look right and both fail (measurement
+  killed the second: the camera never moves off the head during a grab), while two
+  detectors the framework already trusts succeed. Ends on a stale-object-reference
+  trap where the two obvious staleness checks — reading a flag back, and comparing the
+  player's address — each pass while the bug is live.
+- [`case-studies/2026-08-20-a-mod-manager-that-silently-drops-mods.md`](case-studies/2026-08-20-a-mod-manager-that-silently-drops-mods.md)
+  — a mod that never appears in Fluffy Mod Manager, no error anywhere, and two
+  plausible fixes reasoned from packaging conventions that both miss. The answer is in
+  the manager's own binary metadata cache, which separates "never parsed" from "parsed
+  but hidden" — the distinction every guess had been blind to. General lesson: read the
+  tool's state about your input before theorising about the input.
 - [`techniques/reframework-reflection-toolkit.md`](techniques/reframework-reflection-toolkit.md)
   — general method for finding an unknown effect's source in a
   closed-source engine with no API docs: the three structurally
