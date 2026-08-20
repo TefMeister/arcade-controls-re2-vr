@@ -91,33 +91,57 @@ a save *while alive* frees and reuses the same slot, so the address is byte-iden
 and the check sails straight past it. This is why "it works when I die but not when I
 load" is a coherent bug report and not user error.
 
-**What works:** watch the load transition itself, and rebuild unconditionally when it
-ends.
+**What works:** don't bet on any single load signal. This corner took three builds in
+one day, and each failure taught something a reader should have up front:
 
-```lua
--- true while a save load is in progress -- and ONLY while it is in progress
-SaveDataManager.get_IsLoadBusy
-```
+### Failure A: a "busy" flag that never goes back down
 
-Skip all work while busy, then drop the cached component list when it goes false. No
-dependence on object identity.
+The first build gated all per-frame work on `SaveDataManager.get_IsLoadBusy` OR
+`MainFlowManager.get_IsInLoadGameData` OR `get_IsLoadGame` being true. At least one of
+the MainFlowManager pair is a *mode* flag, not a *transient* flag — once a save has
+been loaded it stays true for the rest of the session. The gate that was supposed to
+pause the script during loads became a permanent off-switch: one save load and the
+script never hid anything again, and a script reset couldn't fix it because the flag
+was still latched. "Is a load happening" and "did this session come from a load" both
+look like `IsLoadSomething` in RE Engine's naming.
 
-### Correction: a "busy" flag that never goes back down
+### Failure B: the "safe" getter never fires at all
 
-The first build of that gate also treated `MainFlowManager.get_IsInLoadGameData` /
-`get_IsLoadGame` as "load in progress". Don't. At least one of those is a *mode* flag,
-not a *transient* flag — once a save has been loaded it stays true for the rest of the
-session. The gate that was supposed to pause the script during loads became a
-permanent off-switch: one save load and the script never hid anything again, and a
-script reset couldn't fix it because the flag was still latched.
+The second build gated and edge-detected on `SaveDataManager.get_IsLoadBusy` alone.
+Across five consecutive in-game save loads it never went true once — whatever it
+reports busy for, it is not this path. So the load detector silently ceased to exist,
+and only a player-object address comparison caught the rebuilds (which, per the trap
+above, misses same-slot reuse).
 
-The general lesson: before gating per-frame work on any "busy" getter, verify it
-actually returns to false afterwards. "Is a load happening" and "did this session come
-from a load" both look like `IsLoadSomething` in RE Engine's naming, and only one of
-them is safe to wait on. If you must use an unverified getter, pair the gate with a
-watchdog that logs each getter's individual value once the gate has held for more than
-a few seconds — a wedged gate that names the guilty flag costs one glance at the log;
-a silent one costs a whole diagnosis session.
+### Failure C: the rescan that fires early finds a torso with a flashlight
+
+When a rebuild *was* detected, the immediate rescan walked a player whose meshes had
+not streamed in yet: it found only attachments (FlashLight, Transceiver), no
+Face/Hair. The list was now non-empty, so the "rescan when empty" logic considered the
+job done, and the head meshes that appeared a beat later were never hidden. The
+existence of a player object does not mean the player's hierarchy is complete.
+
+### The combination that ships
+
+- **Never gate on unverified getters.** Poll all three, and treat *any transition of
+  any of them* as a load boundary that forces a rescan — rising or falling doesn't
+  matter, a spare rescan is cheap, and logging each transition means the log
+  eventually documents each getter's real semantics for free.
+- **Validate scan results semantically.** A scan without a Face/Hair mesh is flagged
+  provisional and retried every 2 seconds until the real head shows up.
+- **Periodic revalidation as the backstop.** Re-walk from the live player every 10
+  seconds even when everything looks healthy. This is the only thing that catches the
+  same-slot reuse case, because the orphaned components accept writes and read back
+  the written values — no per-component validity check can see the problem. Restore,
+  rewalk, and re-apply all land inside one frame callback, so the periodic pass never
+  flickers on screen.
+
+### Bonus trap: substring matching bites back
+
+The wide name-match that catches `eyelash`/`lash` meshes also caught **FlashLight**
+("F-lash-Light") and quietly hid the flashlight's body mesh for several builds. If you
+match mesh names by substring, keep an exclusion list that wins over the match list —
+and audit your scan log's "will hide" tags against what you actually intended.
 
 ### How the wedge was diagnosed from the log alone
 
