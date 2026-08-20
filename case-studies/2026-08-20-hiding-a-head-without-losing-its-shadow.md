@@ -153,6 +153,24 @@ the only early return between them is the gate itself. Which log lines kept appe
 versus which stopped bisected the frame handler to a single statement — worth
 arranging your per-frame logging so that ordering carries information on purpose.
 
+## The third trap: capturing your own state as "original" (added next day)
+
+The script captures each mesh's original draw flags before hiding it, so it can
+restore them for cutscenes. Several code paths dropped the cached mesh list without
+restoring first (on load transitions, player swaps, staleness). The components were
+still live and still carried OUR flags — so the next scan captured
+`DrawDefault=false` as the mesh's "original" state. From then on every restore
+faithfully restored the head to invisible: the cutscene logic reported success,
+the log said "head restored", and the character stayed headless on screen.
+
+Two rules fall out. **Never drop cached component references while your writes are
+still applied** — restore first, even if you believe the refs are dead (a restore
+on a dead ref is a no-op; a skipped restore on a live ref poisons the next
+capture). And **sanity-check captures against your own signature**: if the
+"original" you just read is exactly the state your mod writes, you are looking at
+your own leftovers — substitute known engine defaults and log it. That guard also
+self-heals any corruption already latched in a running game.
+
 ## Diagnostic lesson
 
 The first instrumented build produced **zero** log lines across a whole play session,
