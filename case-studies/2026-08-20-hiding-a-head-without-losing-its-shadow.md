@@ -95,13 +95,39 @@ load" is a coherent bug report and not user error.
 ends.
 
 ```lua
--- true while a save load is in progress
+-- true while a save load is in progress -- and ONLY while it is in progress
 SaveDataManager.get_IsLoadBusy
-MainFlowManager.get_IsInLoadGameData / get_IsLoadGame
 ```
 
 Skip all work while busy, then drop the cached component list when it goes false. No
 dependence on object identity.
+
+### Correction: a "busy" flag that never goes back down
+
+The first build of that gate also treated `MainFlowManager.get_IsInLoadGameData` /
+`get_IsLoadGame` as "load in progress". Don't. At least one of those is a *mode* flag,
+not a *transient* flag — once a save has been loaded it stays true for the rest of the
+session. The gate that was supposed to pause the script during loads became a
+permanent off-switch: one save load and the script never hid anything again, and a
+script reset couldn't fix it because the flag was still latched.
+
+The general lesson: before gating per-frame work on any "busy" getter, verify it
+actually returns to false afterwards. "Is a load happening" and "did this session come
+from a load" both look like `IsLoadSomething` in RE Engine's naming, and only one of
+them is safe to wait on. If you must use an unverified getter, pair the gate with a
+watchdog that logs each getter's individual value once the gate has held for more than
+a few seconds — a wedged gate that names the guilty flag costs one glance at the log;
+a silent one costs a whole diagnosis session.
+
+### How the wedge was diagnosed from the log alone
+
+The log showed `load finished -- forcing mesh rescan` exactly once (one all-false
+frame during the handover), and then the periodic distance-trace lines kept flowing
+while the `rescan (gen N)` line that should have followed never appeared. The distance
+trace runs *before* the load gate in the frame handler; the rescan runs *after* it;
+the only early return between them is the gate itself. Which log lines kept appearing
+versus which stopped bisected the frame handler to a single statement — worth
+arranging your per-frame logging so that ordering carries information on purpose.
 
 ## Diagnostic lesson
 
