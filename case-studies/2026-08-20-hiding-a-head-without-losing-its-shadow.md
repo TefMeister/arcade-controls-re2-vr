@@ -121,7 +121,7 @@ Face/Hair. The list was now non-empty, so the "rescan when empty" logic consider
 job done, and the head meshes that appeared a beat later were never hidden. The
 existence of a player object does not mean the player's hierarchy is complete.
 
-### The combination that ships
+### The combination that ships (verified live, same day)
 
 - **Never gate on unverified getters.** Poll all three, and treat *any transition of
   any of them* as a load boundary that forces a rescan — rising or falling doesn't
