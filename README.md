@@ -218,7 +218,7 @@ posture behavior layered on. This repo is written explanation only — no
 mod source lives here.
 
 **Companion repos**, added 2026-08-15:
-[`arcade-controls-re2-vr`](https://github.com/TefMeister/arcade-controls-re2-vr)
+[`arcade-controls-re2-vr-mod`](https://github.com/TefMeister/arcade-controls-re2-vr-mod)
 holds the Nexus-confirmed release history, and
 [`arcade-controls-re2-vr-dev-archive`](https://github.com/TefMeister/arcade-controls-re2-vr-dev-archive)
 holds the full, unpolished development archive (snapshots, dead ends,
