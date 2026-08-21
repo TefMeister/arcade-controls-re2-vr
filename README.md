@@ -16,6 +16,19 @@ specific bugs and features, see
 
 **Nexus Mods page:** https://www.nexusmods.com/residentevil22019/mods/2640
 
+## The five repositories for ARCADE CONTROLS for RE2 VR
+
+Everything for this game lives in five repositories, each with one job — so you
+always know where to look. You are in **arcade-controls-re2-vr-mod**.
+
+| Repository | What lives here |
+| --- | --- |
+| **arcade-controls-re2-vr-mod** ← you are here | The mod itself — the REFramework/Lua VR weapon-handling mod (Nexus release history). |
+| [arcade-controls-re2-vr-dev-archive](https://github.com/TefMeister/arcade-controls-re2-vr-dev-archive) | Full development history — snapshots, probes, dead ends, raw recon. |
+| [arcade-controls-re2-vr-modding-notes](https://github.com/TefMeister/arcade-controls-re2-vr-modding-notes) | Readable field notes / progress ledger. |
+| [arcade-controls-re2-vr-staging](https://github.com/TefMeister/arcade-controls-re2-vr-staging) 🔒 | **Private** — unverified WIP builds, cross-machine handoff. |
+| [arcade-controls-re2-vr-engine-research](https://github.com/TefMeister/arcade-controls-re2-vr-engine-research) | Distilled engine reference (dossier) + reusable VR RE playbook. |
+
 ## Releases
 
 All 12 versions actually published on Nexus, oldest to newest. Each is a
