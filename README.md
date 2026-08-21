@@ -24,6 +24,19 @@ here (RE Engine, `via.*`, `app.ropeway.*`) won't transfer, but the
 relevant entry in full is meant to be cheaper than re-running the same
 dead ends this repo already paid for.
 
+## The five repositories for ARCADE CONTROLS for RE2 VR
+
+Everything for this game lives in five repositories, each with one job — so you
+always know where to look. You are in **arcade-controls-re2-vr-modding-notes**.
+
+| Repository | What lives here |
+| --- | --- |
+| [arcade-controls-re2-vr-mod](https://github.com/TefMeister/arcade-controls-re2-vr-mod) | The mod itself — the REFramework/Lua VR weapon-handling mod (Nexus release history). |
+| [arcade-controls-re2-vr-dev-archive](https://github.com/TefMeister/arcade-controls-re2-vr-dev-archive) | Full development history — snapshots, probes, dead ends, raw recon. |
+| **arcade-controls-re2-vr-modding-notes** ← you are here | Readable field notes / progress ledger. |
+| [arcade-controls-re2-vr-staging](https://github.com/TefMeister/arcade-controls-re2-vr-staging) 🔒 | **Private** — unverified WIP builds, cross-machine handoff. |
+| [arcade-controls-re2-vr-engine-research](https://github.com/TefMeister/arcade-controls-re2-vr-engine-research) | Distilled engine reference (dossier) + reusable VR RE playbook. |
+
 ## Index
 
 One line per entry — enough to tell if it's worth reading in full before
