@@ -59,8 +59,35 @@ never populates it.
 
 ## Where the main feature stands
 
-Game-side capture for the push-open feature is complete: the verb is
-`execForceOpen(SideType)` (fallback `requestOpenByLever`), captured live with
-arguments on multiple doors, both side values. The one remaining unknown —
-does calling it from Lua work outside an interact context — has a bench-test
-button in the probe awaiting one click next session.
+**Bench test passed the same evening:** `door:call("execForceOpen", side)` alone
+fully opens a closed unlocked door from Lua — no other calls needed, verified on
+two doors at under ~1.3 m. `SideType` picks the swing direction (on the tested
+side: 1 = away from the player, 0 = toward).
+
+Two testing lessons from the bench itself:
+
+6. **A "failed" test at the wrong distance looks like a partial API.** The first
+   bench report was "it only nudges, like a zombie, door stays closed" — which
+   sent us building a call-combo matrix (add `setOpenSpeed`, add `onOpened`...).
+   The real cause: the player stood too far away. Same call, closer in, swings
+   the door fully. Before theorizing that an API needs more calls, re-run the
+   minimal call under the exact conditions the live capture showed (~1 m).
+7. **Let the human re-test before you trust a direction convention.** The
+   side-0/side-1 push/pull mapping got reported one way, then corrected to the
+   opposite after a careful retest. Directional conventions deserve a
+   double-check — and a config flip toggle in the feature, which costs nothing.
+
+8. **The "fallback" verb was a trap.** `requestOpenByLever` + `setOpenSpeed`
+   (the exact pair the game itself fires on a normal interact) called from Lua
+   opens the door a crack and then wedges it — no further open call works on
+   that door. Outside its interact context, the lever path starts a
+   choreography it can never finish, and the door FSM stays mid-sequence.
+   `execForceOpen` (with its force/one-shot semantics) is the only safe
+   external verb. Replaying a captured call sequence is not automatically
+   safe just because the game runs it — context the game sets up around the
+   calls (interact lock, player jack animation) can be a hard dependency.
+
+The feature script is now built (wrist-velocity push gesture → `execForceOpen`,
+side chosen from the door's facing axis with a flip toggle, per-door cooldown,
+no hooks at all, and deliberately NO lever fallback). Awaiting its first
+in-headset test.
