@@ -113,3 +113,28 @@ Its first in-headset test added two more lessons the same night:
    `ctrl_vel − hmd_vel` (both tracking-space), head leans and roomscale steps
    cancel out of the signal entirely, killing the whole false-positive class
    in one subtraction — no thresholds tuned against walking speed needed.
+
+## Epilogue: shipped the knowledge, shelved the feature
+
+Three more findings closed the night out:
+
+11. **A door's GameObject origin sits at the HINGE, not the panel.** Reach
+    checks against the origin only fired when the tester aimed at the hinges.
+    Fix: sample distance against points spread along the door's lateral axis
+    (five points across ±0.9 m covered a door width without knowing the
+    panel's extension sign).
+12. **The game already had the feature — in the body.** RE2 natively
+    slow-pushes a door open when the player's body presses against it
+    (auto-peek), and in VR roomscale the body follows the HMD, so walking your
+    head into a door gently opens it. The tester assumed our tinkering had
+    improved the doors; the log proved otherwise (no gesture fires during any
+    head-open). Know the native mechanics before crediting — or blaming —
+    your own code.
+13. **Working ≠ shippable.** By the end the gesture genuinely worked —
+    calibrated side mapping, panel-distance reach, even push-speed-scaled
+    swing speed (`setOpenSpeed` after `execForceOpen`, the safe combo). The
+    player still shelved it as unreliable *in real play*: velocity-gated
+    gestures near hinge-anchored reach zones are just too twitchy next to the
+    native body-push. The script is disabled, not deleted; the reliable
+    revival path is the player's own original suggestion — hand near door +
+    button press → `execForceOpen`, no velocity gates at all.
