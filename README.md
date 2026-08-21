@@ -86,3 +86,10 @@ rights reserved by default until a license is chosen. Third-party work
 referenced above remains the property of its original authors and is
 used here only with their permission or as a credited reference/link,
 never redistributed wholesale without that permission.
+
+## Contributing & policy
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) — how we credit and link sources, our
+**study-everything-public but write-our-own-code** rule (we copy no one else's
+source code or files, any license or price), the terms for reusing our work
+(free, with credit), and how to request a correction or removal.
