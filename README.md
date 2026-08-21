@@ -1,4 +1,4 @@
-# RE2 VR Modding Notes
+# arcade-controls-re2-vr-modding-notes
 
 Trial-and-error notes from modding *Resident Evil 2 Remake* for VR using
 [REFramework](https://github.com/praydog/REFramework) and Lua, working
