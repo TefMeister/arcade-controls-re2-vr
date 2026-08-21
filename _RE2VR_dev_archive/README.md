@@ -53,7 +53,7 @@ across machines and drives. Point-in-time copies, not synced further:
   re2` (713 files: early session logs, `CHANGELOG.md`, early probe scripts, duplicate
   `- Copy` files, more release zips). The messy, unorganized record of the project's
   earliest days, kept as-is rather than cleaned up — see [[re2_desktop_archive_folder]].
-- `history\github_notes_repo\` — full copy of the `reframework-ai-modding-notes` GitHub
+- `history\github_notes_repo\` — full copy of the `arcade-controls-re2-vr-modding-notes` GitHub
   repo clone, **including its `.git` folder** (full commit history preserved, not just
   the current working tree) — the curated case-study write-ups of dead ends and fixes.
 - `history\transfer_folder_sessions\` — every dated session folder from both

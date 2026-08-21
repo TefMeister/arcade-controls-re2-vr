@@ -15,7 +15,7 @@ the archive was created — see `README.md` for the full breakdown. Summary:
   `_v1.3.0.zip` (every shipped version, start to now) + `GripSuppressionVR-v1.0.0.zip`.
 - `history\desktop_archive_pre_2026-08-07\` — 713 files, the original unorganized
   project dump from `Desktop\everything Claude re2`.
-- `history\github_notes_repo\` — the full `reframework-ai-modding-notes` repo clone
+- `history\github_notes_repo\` — the full `arcade-controls-re2-vr-modding-notes` repo clone
   incl. `.git` history (10 case studies + 1 technique write-up as of this copy).
 - `history\transfer_folder_sessions\` — 5 dated session folders (`2026-08-09_home`,
   `2026-08-09_home_2`, `2026-08-09_work`, `2026-08-10_work`, `2026-08-11_work`) plus

@@ -13,7 +13,7 @@ handoffs. If you want the clean, current mod, see the **[releases
 repo](https://github.com/TefMeister/arcade-controls-re2-vr-mod)** instead. If
 you want written-up lessons from the investigations behind this mod, see
 the **[modding notes
-repo](https://github.com/TefMeister/reframework-ai-modding-notes)**.
+repo](https://github.com/TefMeister/arcade-controls-re2-vr-modding-notes)**.
 
 This repo exists for two reasons: as a real backup (so nothing gets lost
 across machines or time), and because the raw history — including the
