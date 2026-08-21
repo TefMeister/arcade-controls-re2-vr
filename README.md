@@ -10,7 +10,7 @@ This is **not** a curated release. It's the working archive: every
 snapshot taken as files changed, dead-end probes, abandoned experiments,
 restore points taken before risky changes, and cross-machine session
 handoffs. If you want the clean, current mod, see the **[releases
-repo](https://github.com/TefMeister/arcade-controls-re2-vr)** instead. If
+repo](https://github.com/TefMeister/arcade-controls-re2-vr-mod)** instead. If
 you want written-up lessons from the investigations behind this mod, see
 the **[modding notes
 repo](https://github.com/TefMeister/reframework-ai-modding-notes)**.
