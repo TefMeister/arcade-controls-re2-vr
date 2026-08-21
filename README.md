@@ -20,7 +20,7 @@ specific bugs and features, see
 
 All 12 versions actually published on Nexus, oldest to newest. Each is a
 GitHub Release with the exact zip that went up on Nexus attached — see the
-[Releases page](https://github.com/TefMeister/arcade-controls-re2-vr/releases)
+[Releases page](https://github.com/TefMeister/arcade-controls-re2-vr-mod/releases)
 for downloads and per-version notes.
 
 v1.0.0 · v1.0.1 · v1.1.0 · v1.2.0 · v1.2.1 · v1.2.2 · v1.2.3 · v1.2.4 ·
