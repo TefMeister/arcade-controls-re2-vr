@@ -12,7 +12,7 @@ snapshots, dead ends, probes, session-to-session notes — see
 [`arcade-controls-re2-vr-dev-archive`](https://github.com/TefMeister/arcade-controls-re2-vr-dev-archive).
 For write-ups of the actual investigation/debugging process behind
 specific bugs and features, see
-[`reframework-ai-modding-notes`](https://github.com/TefMeister/reframework-ai-modding-notes).
+[`arcade-controls-re2-vr-modding-notes`](https://github.com/TefMeister/arcade-controls-re2-vr-modding-notes).
 
 **Nexus Mods page:** https://www.nexusmods.com/residentevil22019/mods/2640
 
