@@ -99,3 +99,10 @@ REFramework's reflection API to explore an engine with no public source
 or docs, and helping interpret test results. Nothing here is
 AI-generated without a human in the loop deciding what to build and
 confirming it actually works in-game.
+
+## Contributing & policy
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) — how we credit and link sources, our
+**study-everything-public but write-our-own-code** rule (we copy no one else's
+source code or files, any license or price), the terms for reusing our work
+(free, with credit), and how to request a correction or removal.
