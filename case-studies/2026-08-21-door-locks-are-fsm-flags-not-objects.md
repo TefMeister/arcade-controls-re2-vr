@@ -61,8 +61,12 @@ never populates it.
 
 **Bench test passed the same evening:** `door:call("execForceOpen", side)` alone
 fully opens a closed unlocked door from Lua — no other calls needed, verified on
-two doors at under ~1.3 m. `SideType` picks the swing direction (on the tested
-side: 1 = away from the player, 0 = toward).
+two doors at under ~1.3 m. `SideType` is an **absolute door-local swing
+direction** — 1 swings the door one way, 0 the other, regardless of where the
+player stands (the player's final clarification after two rounds of
+player-relative "push/pull" readings that were artifacts of testing from a
+single side). A push feature must therefore map the player's side of the door
+plane to the away-swinging value itself.
 
 Two testing lessons from the bench itself:
 
@@ -72,10 +76,12 @@ Two testing lessons from the bench itself:
    The real cause: the player stood too far away. Same call, closer in, swings
    the door fully. Before theorizing that an API needs more calls, re-run the
    minimal call under the exact conditions the live capture showed (~1 m).
-7. **Let the human re-test before you trust a direction convention.** The
-   side-0/side-1 push/pull mapping got reported one way, then corrected to the
-   opposite after a careful retest. Directional conventions deserve a
-   double-check — and a config flip toggle in the feature, which costs nothing.
+7. **Direction conventions take three tries — plan for it.** The side-0/side-1
+   meaning was reported as push/pull one way, corrected to the opposite, and
+   finally resolved as *neither*: an absolute door-local swing direction that
+   only looked player-relative because early tests all stood on one side. Test
+   directional APIs from both reference frames before naming the convention —
+   and ship a config flip toggle regardless, it costs nothing.
 
 8. **The "fallback" verb was a trap.** `requestOpenByLever` + `setOpenSpeed`
    (the exact pair the game itself fires on a normal interact) called from Lua
