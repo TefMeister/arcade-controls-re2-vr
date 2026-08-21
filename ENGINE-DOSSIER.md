@@ -2,7 +2,7 @@
 
 > Distilled current truth about this game's engine, as worked through the
 > `PLAYBOOK.md` phases. Blow-by-blow history lives in the `-dev-archive` and
-> `reframework-ai-modding-notes` repos; this is the consolidated reference.
+> `arcade-controls-re2-vr-modding-notes` repos; this is the consolidated reference.
 
 **Status:** Shipped. This is a mature, Nexus-released REFramework **Lua** mod
 ("ARCADE CONTROLS for RE2 VR") — custom VR weapon handling, two-handed grips,

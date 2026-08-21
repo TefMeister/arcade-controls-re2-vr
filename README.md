@@ -32,7 +32,7 @@ This repository holds:
   gameplay-integration work.
 
 The blow-by-blow development history lives in the sibling repositories
-(`-dev-archive` for the messy in-progress record, `reframework-ai-modding-notes`
+(`-dev-archive` for the messy in-progress record, `arcade-controls-re2-vr-modding-notes`
 for readable per-bug case studies). This repo is the consolidated engine
 knowledge, not the diary.
 
