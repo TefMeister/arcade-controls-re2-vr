@@ -93,7 +93,23 @@ Two testing lessons from the bench itself:
    safe just because the game runs it — context the game sets up around the
    calls (interact lock, player jack animation) can be a hard dependency.
 
-The feature script is now built (wrist-velocity push gesture → `execForceOpen`,
-side chosen from the door's facing axis with a flip toggle, per-door cooldown,
-no hooks at all, and deliberately NO lever fallback). Awaiting its first
-in-headset test.
+The feature script is now built (push gesture → `execForceOpen`, side chosen
+from the door's facing axis with a flip toggle, per-door cooldown, no hooks at
+all, and deliberately NO lever fallback).
+
+Its first in-headset test added two more lessons the same night:
+
+9. **Skeleton wrist joints are not VR hands.** v1 measured push velocity from
+   the player skeleton's `l/r_arm_wrist` joints (they resolve fine and track
+   *something*, which is the trap). In this VR setup they follow the body
+   animation, not the controllers — the tester's real hands passed through
+   doors with no effect, while walking his *head* into a door opened it,
+   because roomscale HMD movement translates the whole body, wrists included.
+   The head was literally the only limb that could pass the velocity gate.
+   For gestures, always use controller poses (mapped to world space via
+   `R = camera_rot * hmd_rot⁻¹`, camera == HMD — the same recipe the
+   grenade-throw conversion uses).
+10. **Measure gesture velocity relative to the head, not the world.** With
+   `ctrl_vel − hmd_vel` (both tracking-space), head leans and roomscale steps
+   cancel out of the signal entirely, killing the whole false-positive class
+   in one subtraction — no thresholds tuned against walking speed needed.
