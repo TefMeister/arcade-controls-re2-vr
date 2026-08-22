@@ -77,3 +77,7 @@ is why it "always turns the same amount".
 Open. Root cause fully characterized; fix requires either an undiscovered
 REFramework-side switch (reading VR.cpp next) or a native patch. The body-yaw
 guard stays shipped — it genuinely fixes the body half of the symptom.
+
+**Continued (same day):** the source read found the mechanism (in
+FirstPerson.cpp, not VR.cpp) and a fifth lever that works — see
+[The view anchor and the fifth lever](2026-08-22-the-view-anchor-and-the-fifth-lever.md).
