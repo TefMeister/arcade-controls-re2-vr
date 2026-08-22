@@ -149,12 +149,53 @@ The iteration ladder, each step falsified by a headset test:
 every time — top dismount faces away from the ladder, bottom dismount faces
 it straight on; cupboard pushes hold steady with a small paired settle.
 
+## Endgame (same day, evening): ground truth ends the guessing
+
+v9's formula surgery regressed the exits — the deleted `−hmd0` term had been
+*canceling* the release formula's `−hmd_now`. The way out was discovering
+that **`vrmod:get_last_render_matrix()` is bound to Lua**: the actual
+rendered view, measurable at last. Everything after that took minutes of
+design instead of hours of inference:
+
+- **v10:** measured-view servo — self-calibrate the matrix's yaw convention
+  per jack (sampled against the camera while composition is still normal),
+  then nudge the anchor until measured view == body facing. User-verified:
+  the climbing view became chair-proof and always faces the ladder; the 180°
+  top-mount turn flows through body-follow.
+- **v11 (the WIN, staging `512fda3`):** measured-view release — hand back
+  `measured view − current HMD yaw` (the verified normal-play equilibrium)
+  so exits continue the held view seamlessly. User-verified end-to-end on
+  ladders and cupboards, chair-independent.
+- **v12:** learned anchor→view constant K places the anchor correctly from
+  frame one (log-verified within ~15°). Which exposed the true source of the
+  residual start artifact (teleport + jitter + ~1 s pan): it is
+  **FirstPerson's own `m_rotation_offset` interpolation**, not the anchor.
+
+**The upstream find:** in VR, FirstPerson *intends* to snap
+(`m_interp_camera_speed >= 100.0f && bone_scale == 0.0f` →
+`m_rotation_offset = wanted_mat`), but `bone_scale` only ever *lerps toward*
+zero — an exact float equality that is never true — so VR always takes the
+slow interp path. Likely an upstream bug in REFramework's FirstPerson.cpp.
+
 ## Status
 
-Nearly closed. v9 (no hmd0 term + trim slider) awaits the next headset
-session. Remaining: confirm chair-independence, dial the trim constant,
-prune which written field (Yaw / CameraRotation / SyncCameraRotation) is
-load-bearing, and extend the same hold to cutscene-exit re-anchoring.
+**Resolved for gameplay.** The hold ships the correct behavior: view locks
+to the interaction (ladder/cupboard/switch) every time, clean 180° on
+top-mounts, seamless chair-proof exits. Remaining cosmetic: the ~1 s
+FP-interp settle at jack start — beyond Lua's reach. Follow-ups:
+(1) native patch forcing FP's snap branch while jacked, or better
+(2) an upstream PR to praydog/REFramework (fix the `== 0.0f` check / snap
+while `is_jacked()`), and (3) extend the hold to cutscene enter/exit
+(camera-type transition trigger instead of the jack flag).
+
+14. **Find the API that measures the thing you keep inferring.** Six hours of
+    composition algebra ended in minutes once the actual rendered view was
+    readable. Search the bindings for ground truth before modeling around
+    its absence.
+15. **When your correction converges instantly but the artifact persists,
+    the artifact belongs to someone else's smoothing.** Log-verified
+    placement within 15° + a 129° visible slew = the slew is downstream of
+    your write, in code you don't own.
 
 ## Meta-lessons from the iteration ladder
 
