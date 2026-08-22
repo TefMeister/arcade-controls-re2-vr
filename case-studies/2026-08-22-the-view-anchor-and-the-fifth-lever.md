@@ -105,12 +105,65 @@ the current iteration's addition.
     tracking live gives the felt "locked to the climb" without the comfort
     violation of a true lock.
 
+## How it actually resolved (same day, ~10 more live iterations)
+
+The steering servo was the wrong frame. The day's second user clarification
+changed the design: the player necessarily FACES the interaction to start it,
+so the bug is not "view exposed at a stale offset" — it's the game rotating
+its gimmick camera for the takeover and the VR view following. The fix family
+that won is a **HOLD**: pin the controller anchor every frame (via post-hooks
+on the controller's update methods — the only slot that beats the game's own
+per-frame write) and hand back a consistent state at release.
+
+The iteration ladder, each step falsified by a headset test:
+
+- **Servo vs clamp:** the "YawMin clamp" theory died — the −2.6471 rad
+  constant is the game's per-frame gimmick yaw write, not a limit. Widening
+  YawMin/YawMax did nothing; write-slot timing (sdk.hook post-call on the
+  controller updates) is what wins.
+- **Loop gain:** hooks fire ~5×/frame (all controller instances share
+  methods); unbudgeted 0.5-gain corrections = 250% loop gain = violent
+  oscillation. Budgeted per-frame corrections fixed it — then became moot.
+- **Glide-in/out REVERTED:** the natural captured anchor renders ~150° off
+  under jack composition — the hold's endpoints live in *different
+  composition regimes*, so any smooth anchor path visits the wrong direction
+  in view space. Instant transitions are the honest minimum.
+- **Head-yaw lock REVERTED:** during a jack the composed view is the anchor
+  *directly* — raw HMD yaw is not added — so counter-rotating by head yaw
+  produced inverted head-look. (The hold is naturally yaw-locked; pitch stays
+  free through the untouched HMD pose path.)
+- **Body-target, not view-target (user's design):** holding the approach
+  view made results vary with RS-steering state. Targeting the BODY facing is
+  deterministic (the game aligns the body to the interaction), and the
+  top-of-ladder 180° turn-around comes for free via **body-follow** (rotate
+  the held anchor by the body's live yaw delta — view turns only when the
+  body visibly turns).
+- **The hmd0 term falsified by a controlled experiment:** the user isolated
+  variables in-headset — RS-only turns: climb view perfectly reproducible;
+  physical chair turns: climb view tracks the room orientation. The formula's
+  `− hmd0` compensation had been "verified" only at near-constant chair
+  orientations (a constant masquerading as a variable). v9 drops it and adds
+  a user-facing trim slider for whatever fixed residual remains.
+
+**Milestone (v8, user-verified):** ladder exits are deterministic and correct
+every time — top dismount faces away from the ladder, bottom dismount faces
+it straight on; cupboard pushes hold steady with a small paired settle.
+
 ## Status
 
-Open, close to resolution. Servo + clamp widening deployed for live test.
-Remaining knowns-unknowns: which of the three written fields is the
-load-bearing one (candidates can be pruned once it converges), whether the
-game restores its own yaw clamps after a jack, and porting the same steering
-to ladder climbs (ladders likely clamp too) plus the cutscene-exit case.
-The proven pieces regardless of outcome: the anchor mechanism, jack-flag
-detection, the controller acquisition path, and the field map above.
+Nearly closed. v9 (no hmd0 term + trim slider) awaits the next headset
+session. Remaining: confirm chair-independence, dial the trim constant,
+prune which written field (Yaw / CameraRotation / SyncCameraRotation) is
+load-bearing, and extend the same hold to cutscene-exit re-anchoring.
+
+## Meta-lessons from the iteration ladder
+
+11. **A constant can masquerade as a variable.** The `cam = held + hmd0`
+    relation was "confirmed" twice — at chair orientations 3° apart. Vary
+    the suspected input deliberately before believing a fitted term.
+12. **The user is an instrument.** Rough in-headset estimates ("150-ish
+    left, like a watch with no numbers") repeatedly matched the logged math
+    within degrees — and the decisive experiment (RS-only vs physical-only
+    turns) was designed and run by the player mid-session.
+13. **Endpoints in different composition regimes cannot be glided between.**
+    Smoothness in parameter space is not smoothness in view space.
