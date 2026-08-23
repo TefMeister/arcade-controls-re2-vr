@@ -11,8 +11,13 @@
 Everything that previously lived only outside this folder was pulled in the same day
 the archive was created — see `README.md` for the full breakdown. Summary:
 
-- `history\releases\` — 10 zips: `ARCADE_CONTROLS_for_RE2_VR_1.0.0.zip` through
-  `_v1.3.0.zip` (every shipped version, start to now) + `GripSuppressionVR-v1.0.0.zip`.
+- `history\releases\` — every shipped Nexus zip, `ARCADE_CONTROLS_for_RE2_VR_1.0.0.zip`
+  through `_v1.5.0.zip` (the final release; completed 2026-08-23 from `Desktop\Nexus mods`)
+  + `GripSuppressionVR-v1.0.0.zip` + `_ABANDONED_..._v1.4.0.zip` (the never-shipped
+  NIC-default-on 1.4.0 build; until 2026-08-23 it sat here mislabeled as the shipped
+  `v1.4.0.zip` — the real shipped 1.4.0 is now in its place). Note: the desktop copy of
+  the `v1.3.1` zip carries an earlier draft ReadMe; the polished ReadMe variant kept
+  here is the canonical one.
 - `history\desktop_archive_pre_2026-08-07\` — 713 files, the original unorganized
   project dump from `Desktop\everything Claude re2`.
 - `history\github_notes_repo\` — the full `arcade-controls-re2-vr-modding-notes` repo clone
