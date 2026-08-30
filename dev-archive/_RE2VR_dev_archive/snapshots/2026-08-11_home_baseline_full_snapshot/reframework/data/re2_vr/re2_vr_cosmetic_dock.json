@@ -1,0 +1,25 @@
+{
+    "blend_speed": 2.0,
+    "enabled": true,
+    "enter_dist_m": 0.1,
+    "exit_dist_m": 0.18,
+    "grip_back_by_wp": {
+        "wp1000": 0.17499999701976776,
+        "wp1100": -0.13
+    },
+    "grip_back_from_muzzle_m": 0.03799999877810478,
+    "weapons": [
+        "wp2000",
+        "wp4700",
+        "wp4300",
+        "wp4200",
+        "wp8400",
+        "wp8700",
+        "wp1000",
+        "wp4400",
+        "wp4100",
+        "wp2200",
+        "wp4600",
+        "wp1100"
+    ]
+}
