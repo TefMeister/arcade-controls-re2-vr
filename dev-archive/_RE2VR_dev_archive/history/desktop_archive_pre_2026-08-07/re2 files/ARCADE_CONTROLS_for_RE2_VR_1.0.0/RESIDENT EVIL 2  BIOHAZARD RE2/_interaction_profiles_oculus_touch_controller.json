@@ -1,0 +1,142 @@
+{
+    "bindings": [
+        {
+            "action": "pose",
+            "path": "/user/hand/left/input/grip/pose"
+        },
+        {
+            "action": "trigger",
+            "path": "/user/hand/left/input/trigger"
+        },
+        {
+            "action": "grip",
+            "path": "/user/hand/left/input/squeeze"
+        },
+        {
+            "action": "joystick",
+            "path": "/user/hand/left/input/thumbstick"
+        },
+        {
+            "action": "bbutton",
+            "path": "/user/hand/left/input/y/click"
+        },
+        {
+            "action": "joystickclick",
+            "path": "/user/hand/left/input/thumbstick/click"
+        },
+        {
+            "action": "systembutton",
+            "path": "/user/hand/left/input/menu/click"
+        },
+        {
+            "action": "abutton",
+            "path": "/user/hand/left/input/x/click"
+        },
+        {
+            "action": "haptic",
+            "path": "/user/hand/left/output/haptic"
+        },
+        {
+            "action": "weapondial_start",
+            "path": "/user/hand/right/input/thumbstick/click"
+        },
+        {
+            "action": "pose",
+            "path": "/user/hand/right/input/grip/pose"
+        },
+        {
+            "action": "trigger",
+            "path": "/user/hand/right/input/trigger"
+        },
+        {
+            "action": "grip",
+            "path": "/user/hand/right/input/squeeze"
+        },
+        {
+            "action": "joystick",
+            "path": "/user/hand/right/input/thumbstick"
+        },
+        {
+            "action": "bbutton",
+            "path": "/user/hand/right/input/b/click"
+        },
+        {
+            "action": "joystickclick",
+            "path": "/user/hand/right/input/thumbstick/click"
+        },
+        {
+            "action": "systembutton",
+            "path": "/user/hand/right/input/system/click"
+        },
+        {
+            "action": "abutton",
+            "path": "/user/hand/right/input/a/click"
+        },
+        {
+            "action": "re3_dodge",
+            "path": "/user/hand/right/input/a/click"
+        },
+        {
+            "action": "haptic",
+            "path": "/user/hand/right/output/haptic"
+        }
+    ],
+    "vector2_associations": [
+        {
+            "activator": "touchpadclick",
+            "modifier": "touchpad",
+            "outputs": [
+                {
+                    "action": "abutton",
+                    "value": {
+                        "x": 0.0,
+                        "y": -1.0
+                    }
+                },
+                {
+                    "action": "bbutton",
+                    "value": {
+                        "x": 1.0,
+                        "y": 0.0
+                    }
+                },
+                {
+                    "action": "joystickclick",
+                    "value": {
+                        "x": 0.0,
+                        "y": 1.0
+                    }
+                }
+            ],
+            "path": "/user/hand/left"
+        },
+        {
+            "activator": "touchpadclick",
+            "modifier": "touchpad",
+            "outputs": [
+                {
+                    "action": "abutton",
+                    "value": {
+                        "x": 0.0,
+                        "y": -1.0
+                    }
+                },
+                {
+                    "action": "bbutton",
+                    "value": {
+                        "x": -1.0,
+                        "y": 0.0
+                    }
+                },
+                {
+                    "action": "joystickclick",
+                    "value": {
+                        "x": 0.0,
+                        "y": 1.0
+                    }
+                }
+            ],
+            "path": "/user/hand/right"
+        }
+    ]
+}
