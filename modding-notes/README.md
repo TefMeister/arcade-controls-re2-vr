@@ -1,4 +1,4 @@
-# arcade-controls-re2-vr-modding-notes
+# arcade-controls-re2-vr — `modding-notes/`
 
 Trial-and-error notes from modding *Resident Evil 2 Remake* for VR using
 [REFramework](https://github.com/praydog/REFramework) and Lua, working
@@ -24,18 +24,18 @@ here (RE Engine, `via.*`, `app.ropeway.*`) won't transfer, but the
 relevant entry in full is meant to be cheaper than re-running the same
 dead ends this repo already paid for.
 
-## The five repositories for ARCADE CONTROLS for RE2 VR
+## The folders for ARCADE CONTROLS for RE2 VR
 
-Everything for this game lives in five repositories, each with one job — so you
-always know where to look. You are in **arcade-controls-re2-vr-modding-notes**.
+Everything for this game lives in one repository, one folder per job — so you
+always know where to look. You are in **`modding-notes/`**.
 
-| Repository | What lives here |
+| Folder | What lives here |
 | --- | --- |
-| [arcade-controls-re2-vr-mod](https://github.com/TefMeister/arcade-controls-re2-vr-mod) | The mod itself — the REFramework/Lua VR weapon-handling mod (Nexus release history). |
-| [arcade-controls-re2-vr-dev-archive](https://github.com/TefMeister/arcade-controls-re2-vr-dev-archive) | Full development history — snapshots, probes, dead ends, raw recon. |
-| **arcade-controls-re2-vr-modding-notes** ← you are here | Readable field notes / progress ledger. |
-| [arcade-controls-re2-vr-staging](https://github.com/TefMeister/arcade-controls-re2-vr-staging) 🔒 | **Private** — unverified WIP builds, cross-machine handoff. |
-| [arcade-controls-re2-vr-engine-research](https://github.com/TefMeister/arcade-controls-re2-vr-engine-research) | Distilled engine reference (dossier) + reusable VR RE playbook. |
+| [`mod/`](../mod/) | The mod itself — the REFramework/Lua VR weapon-handling mod (Nexus release history). |
+| [`dev-archive/`](../dev-archive/) | Full development history — snapshots, probes, dead ends, raw recon. |
+| **`modding-notes/`** ← you are here | Readable field notes / progress ledger. |
+| [staging/arcade-controls-re2-vr](https://github.com/TefMeister/staging/tree/main/arcade-controls-re2-vr) 🔒 | **Private** — unverified WIP builds, cross-machine handoff. |
+| [`engine-research/`](../engine-research/) | Distilled engine reference (dossier) + reusable VR RE playbook. |
 
 ## Index
 
@@ -231,9 +231,9 @@ posture behavior layered on. This repo is written explanation only — no
 mod source lives here.
 
 **Companion repos**, added 2026-08-15:
-[`arcade-controls-re2-vr-mod`](https://github.com/TefMeister/arcade-controls-re2-vr-mod)
+[`mod/`](../mod/)
 holds the Nexus-confirmed release history, and
-[`arcade-controls-re2-vr-dev-archive`](https://github.com/TefMeister/arcade-controls-re2-vr-dev-archive)
+[`dev-archive/`](../dev-archive/)
 holds the full, unpolished development archive (snapshots, dead ends,
 probes, cross-machine session handoffs) behind everything documented
 here. Credits and a disclaimer (anyone whose work is referenced anywhere
