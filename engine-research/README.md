@@ -14,7 +14,7 @@ find and drive the game's own weapons, player, IK, and motion systems blind,
 with no headers and no source — rather than a from-scratch renderer/camera
 reverse-engineering effort.
 
-This repository holds:
+This folder holds:
 
 - **[`ENGINE-DOSSIER.md`](ENGINE-DOSSIER.md)** — the distilled, current-truth
   reference for this game's engine as reached through REFramework: the type
@@ -31,23 +31,23 @@ This repository holds:
   are already provided by REFramework; the value here is the later
   gameplay-integration work.
 
-The blow-by-blow development history lives in the sibling repositories
-(`-dev-archive` for the messy in-progress record, `arcade-controls-re2-vr-modding-notes`
+The blow-by-blow development history lives in the sibling folders
+(`-dev-archive` for the messy in-progress record, `modding-notes/`
 for readable per-bug case studies). This repo is the consolidated engine
 knowledge, not the diary.
 
-## The five repositories for ARCADE CONTROLS for RE2 VR
+## The folders for ARCADE CONTROLS for RE2 VR
 
-Everything for this game lives in five repositories, each with one job — so you
-always know where to look. You are in **arcade-controls-re2-vr-engine-research**.
+Everything for this game lives in one repository, one folder per job — so you
+always know where to look. You are in **`engine-research/`**.
 
-| Repository | What lives here |
+| Folder | What lives here |
 | --- | --- |
-| [arcade-controls-re2-vr-mod](https://github.com/TefMeister/arcade-controls-re2-vr-mod) | The mod itself — the REFramework/Lua VR weapon-handling mod (Nexus release history). |
-| [arcade-controls-re2-vr-dev-archive](https://github.com/TefMeister/arcade-controls-re2-vr-dev-archive) | Full development history — snapshots, probes, dead ends, raw recon. |
-| [arcade-controls-re2-vr-modding-notes](https://github.com/TefMeister/arcade-controls-re2-vr-modding-notes) | Readable field notes / progress ledger. |
-| [arcade-controls-re2-vr-staging](https://github.com/TefMeister/arcade-controls-re2-vr-staging) 🔒 | **Private** — unverified WIP builds, cross-machine handoff. |
-| **arcade-controls-re2-vr-engine-research** ← you are here | Distilled engine reference (dossier) + reusable VR RE playbook. |
+| [`mod/`](../mod/) | The mod itself — the REFramework/Lua VR weapon-handling mod (Nexus release history). |
+| [`dev-archive/`](../dev-archive/) | Full development history — snapshots, probes, dead ends, raw recon. |
+| [`modding-notes/`](../modding-notes/) | Readable field notes / progress ledger. |
+| [staging/arcade-controls-re2-vr](https://github.com/TefMeister/staging/tree/main/arcade-controls-re2-vr) 🔒 | **Private** — unverified WIP builds, cross-machine handoff. |
+| **`engine-research/`** ← you are here | Distilled engine reference (dossier) + reusable VR RE playbook. |
 
 ## Status
 
