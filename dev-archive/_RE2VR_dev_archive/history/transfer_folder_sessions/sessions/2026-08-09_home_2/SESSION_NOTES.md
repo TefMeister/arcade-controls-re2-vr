@@ -88,7 +88,7 @@ size bumped), not anything meant for players. Kept the prior shipped baseline.
 
 ## GitHub (reframework-ai-modding-notes)
 
-Two new case studies pushed (commit `7460cda`):
+Two new case studies pushed (commit `0f02d37`):
 - `case-studies/2026-08-09-inhibit-is-not-request.md` — the run-toggle investigation.
 - `case-studies/2026-08-09-a-fix-that-kept-reverting-itself.md` — the special-holster
   corruption + Claire profile-routing bug + the "live JSON edit while the game process
